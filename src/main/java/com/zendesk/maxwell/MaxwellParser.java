@@ -112,13 +112,9 @@ public class MaxwellParser {
 	}
 
 
-
-
-	public void run() throws Exception {
+	private void doRun() throws Exception {
 		MaxwellAbstractRowsEvent event;
 
-		this.start();
-		this.isRunning = true;
 		this.shouldStop = false;
 
 		while ( !this.shouldStop ) {
@@ -141,8 +137,17 @@ public class MaxwellParser {
 			replicator.setBinlogFileName(event.getBinlogFilename());
 			replicator.setBinlogPosition(event.getHeader().getNextPosition());
 		}
+	}
 
-		this.isRunning = false;
+	public void run() throws Exception {
+		this.start();
+		this.isRunning = true;
+
+		try {
+			doRun();
+		} finally {
+			this.isRunning = false;
+		}
 	}
 
 	private boolean skipEvent(MaxwellAbstractRowsEvent event) {
