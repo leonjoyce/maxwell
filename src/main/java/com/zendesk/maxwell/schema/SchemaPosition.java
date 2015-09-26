@@ -20,10 +20,10 @@ public class SchemaPosition implements Runnable {
 	private final Long serverID;
 	private final AtomicReference<BinlogPosition> position;
 	private final AtomicReference<BinlogPosition> storedPosition;
-	private final AtomicBoolean run;
+	private volatile boolean run;
 	private Thread thread;
 	private final ConnectionPool connectionPool;
-	private SQLException exception;
+	private volatile SQLException exception;
 
 	public SchemaPosition(ConnectionPool pool, Long serverID) {
 		this.connectionPool = pool;
@@ -31,17 +31,17 @@ public class SchemaPosition implements Runnable {
 		this.position = new AtomicReference<>();
 		this.storedPosition = new AtomicReference<>();
 		this.exception = null;
-		this.run = new AtomicBoolean(false);
+		this.run = false;
 	}
 
 	public void start() {
 		this.thread = new Thread(this, "Position Flush Thread");
-		this.run.set(true);
+		this.run = true;
 		thread.start();
 	}
 
 	public void stop() {
-		this.run.set(false);
+		this.run = false;
 
 		thread.interrupt();
 
@@ -54,7 +54,7 @@ public class SchemaPosition implements Runnable {
 
 	@Override
 	public void run() {
-		while ( run.get() && this.exception == null ) {
+		while ( run && this.exception == null ) {
 			BinlogPosition newPosition = position.get();
 
 			if ( newPosition != null && newPosition.newerThan(storedPosition.get()) ) {
