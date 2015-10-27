@@ -17,8 +17,6 @@ import org.apache.commons.lang.StringUtils;
 import org.json.JSONObject;
 import org.junit.Test;
 
-import com.zendesk.maxwell.MaxwellAbstractRowsEvent.RowMap;
-
 public class MaxwellIntegrationTest extends AbstractMaxwellTest {
 	@Test
 	public void testGetEvent() throws Exception {
