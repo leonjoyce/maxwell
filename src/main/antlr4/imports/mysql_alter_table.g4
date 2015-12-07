@@ -39,10 +39,12 @@ ignored_alter_specifications:
     | DISABLE KEYS
     | ENABLE KEYS
     | ORDER BY index_columns
+    | ALGORITHM '='? algorithm_type
+    | LOCK '='? lock_type
+    | DISCARD TABLESPACE
+    | IMPORT TABLESPACE
+    | FORCE
     /*
-     I'm also leaving out the following from the alter table definition because who cares:
-     | DISCARD TABLESPACE
-     | IMPORT TABLESPACE
      | ADD PARTITION (partition_definition)
      | DROP PARTITION partition_names
      | COALESCE PARTITION number
@@ -54,11 +56,7 @@ ignored_alter_specifications:
      | REPAIR PARTITION {partition_names | ALL}
      | PARTITION BY partitioning_expression
      | REMOVE PARTITIONING
-
-     because who cares.
      */
-     | ALGORITHM '='? algorithm_type
-     | LOCK '='? lock_type
     ;
   algorithm_type: DEFAULT | INPLACE | COPY;
   lock_type: DEFAULT | NONE | SHARED | EXCLUSIVE;
