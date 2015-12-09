@@ -24,8 +24,6 @@ import com.zendesk.maxwell.schema.ddl.SchemaSyncError;
 
 public class MaxwellReplicator extends RunLoopProcess {
 	private final long MAX_TX_ELEMENTS = 10000;
-	String filePath, fileName;
-	private long rowEventsProcessed;
 	private Schema schema;
 	private MaxwellFilter filter;
 
@@ -37,6 +35,9 @@ public class MaxwellReplicator extends RunLoopProcess {
 	protected final OpenReplicator replicator;
 	private final MaxwellContext context;
 	private final AbstractProducer producer;
+
+	private BinlogPosition pendingSchemaUpdatePosition;
+	private Schema  	   pendingSchemaUpdate;
 
 	static final Logger LOGGER = LoggerFactory.getLogger(MaxwellReplicator.class);
 
@@ -59,6 +60,7 @@ public class MaxwellReplicator extends RunLoopProcess {
 		this.producer = producer;
 
 		this.context = ctx;
+
 		this.setBinlogPosition(start);
 	}
 
@@ -172,7 +174,6 @@ public class MaxwellReplicator extends RunLoopProcess {
 				case MySQLConstants.UPDATE_ROWS_EVENT_V2:
 				case MySQLConstants.DELETE_ROWS_EVENT:
 				case MySQLConstants.DELETE_ROWS_EVENT_V2:
-					rowEventsProcessed++;
 					event = processRowsEvent((AbstractRowEvent) v4Event);
 
 					if ( event.matchesFilter() ) {
@@ -248,8 +249,11 @@ public class MaxwellReplicator extends RunLoopProcess {
 					break;
 				case MySQLConstants.QUERY_EVENT:
 					QueryEvent qe = (QueryEvent) v4Event;
-					if (qe.getSql().toString().equals("BEGIN"))
+					if (qe.getSql().toString().equals("BEGIN")) {
+						flushPendingSchemaUpdate();
+
 						rowBuffer = getTransactionRows();
+					}
 					else
 						processQueryEvent((QueryEvent) v4Event);
 					break;
@@ -266,7 +270,7 @@ public class MaxwellReplicator extends RunLoopProcess {
 	}
 
 
-	private void processQueryEvent(QueryEvent event) throws SchemaSyncError, SQLException, IOException {
+	private void processQueryEvent(QueryEvent event) throws SchemaSyncError {
 		// get encoding of the alter event somehow? or just ignore it.
 		String dbName = event.getDatabaseName().toString();
 		String sql = event.getSql().toString();
@@ -283,10 +287,19 @@ public class MaxwellReplicator extends RunLoopProcess {
 		}
 
 		if ( updatedSchema != this.schema) {
-			BinlogPosition p = eventBinlogPosition(event);
-			LOGGER.info("storing schema @" + p + " after applying \"" + sql.replace('\n', ' ') + "\"");
+			pendingSchemaUpdatePosition = eventBinlogPosition(event);
+			this.schema = pendingSchemaUpdate = updatedSchema;
+			LOGGER.info("processed DDL: '" + sql.replace('\n', ' ') + "'");
+		}
+	}
 
-			saveSchema(updatedSchema, p);
+	private void flushPendingSchemaUpdate() throws SQLException {
+		if ( pendingSchemaUpdate != null && pendingSchemaUpdatePosition != null ) {
+			LOGGER.info("storing schema @" + pendingSchemaUpdatePosition);
+
+			saveSchema(pendingSchemaUpdate, pendingSchemaUpdatePosition);
+			pendingSchemaUpdate = null;
+			pendingSchemaUpdatePosition = null;
 		}
 	}
 
