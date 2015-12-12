@@ -16,19 +16,6 @@ import com.zendesk.maxwell.schema.columndef.IntColumnDef;
 import com.zendesk.maxwell.schema.columndef.StringColumnDef;
 
 public class DDLParserTest {
-
-	@BeforeClass
-	public static void setUpBeforeClass() throws Exception {
-	}
-
-	@Before
-	public void setUp() throws Exception {
-	}
-
-	@After
-	public void tearDown() throws Exception {
-	}
-
 	private List<SchemaChange> parse(String sql) {
 		return SchemaChange.parse("default_db", sql);
 	}
@@ -163,6 +150,9 @@ public class DDLParserTest {
 	@Test
 	public void testParsingSomeAlters() {
 		String testSQL[] = {
+			"alter database d DEFAULT CHARACTER SET = 'utf8'",
+			"alter database d UPGRADE DATA DIRECTORY NAME",
+			"alter schema d COLLATE foo",
 			"alter table t add index `foo` using btree (`a`, `cd`) key_block_size=123",
 			"alter table t add key bar (d)",
 			"alter table t add constraint `foo` primary key using btree (id)",
@@ -194,7 +184,10 @@ public class DDLParserTest {
 			"alter table t add column `foo` int, algorithm copy, lock=exclusive",
 			"alter table t FORCE",
 			"alter table t DISCARD TABLESPACE",
-			"alter table t IMPORT TABLESPACE"
+			"alter table t IMPORT TABLESPACE",
+			"create table t (id int) engine=memory",
+			"CREATE TABLE `t1` (id int, UNIQUE `int` (`int`))",
+			"create table t2 (b varchar(10) not null unique) engine=MyISAM"
 		};
 
 		for ( String s : testSQL ) {
@@ -211,9 +204,11 @@ public class DDLParserTest {
 			"CREATE VIEW foo",
 			"CREATE TRIGGER foo",
 			"CREATE DEFINER=`dba`@`localhost` TRIGGER `pt_osc_zd_shard485_prod_cf_values_del` ... ",
-			"ALTER ALGORITHM = UNDEFINED DEFINER='view'@'localhost' SQL SECURITY DEFINER VIEW `fooview` as (SELECT * FROM FOO)",
-			"CREATE OR REPLACE ALGORITHM = MERGE DEFINER = `maxwell`@`localhost` SQL SECURITY INVOKER "
-				+ "VIEW view_name [(alskdj lk jdlfka j dlkjd lk"
+			"CREATE EVENT foo ",
+			"DROP EVENT foo bar",
+			"ALTER ALGORITHM = UNDEFINED DEFINER='view'@'localhost' SQL SECURITY DEFINER VIEW `fooview` as (SELECT * FROM FOO)"
+				+ "VIEW view_name [(alskdj lk jdlfka j dlkjd lk",
+			"CREATE TEMPORARY TABLE 172898_16841_transmem SELECT t.* FROM map.transmem AS t"
 		};
 
 		for ( String s : testSQL ) {
