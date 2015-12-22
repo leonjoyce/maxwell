@@ -50,7 +50,7 @@ public class MaxwellConfig {
 
 
 	public String getConnectionURI() {
-		return "jdbc:mysql://" + mysqlHost + ":" + mysqlPort;
+		return "jdbc:mysql://" + mysqlHost + ":" + mysqlPort + "?" + "useCursorFetch=true";
 	}
 
 	private OptionParser getOptionParser() {
