@@ -12,11 +12,12 @@ user_token: (IDENT | QUOTED_IDENT | string_literal);
 
 name: ( id | tokens_available_for_names | INTEGER_LITERAL);
 id: ( IDENT | QUOTED_IDENT );
-literal: (float_literal | integer_literal | string_literal | NULL);
+literal: (float_literal | integer_literal | string_literal | hex_literal | NULL);
 
 float_literal: INTEGER_LITERAL? '.' INTEGER_LITERAL;
 integer_literal: INTEGER_LITERAL;
 string_literal: (STRING_LITERAL | DBL_STRING_LITERAL);
+hex_literal: HEX_LITERAL;
 
 string: (IDENT | STRING_LITERAL);
 integer: INTEGER_LITERAL;
@@ -48,6 +49,7 @@ SQL_LINE_COMMENT: ('#' | '--') (~'\n')* ('\n' | EOF) -> skip;
 STRING_LITERAL: [bnxBNX]? TICK ('\\\'' | '\'\'' | ~('\''))* TICK;
 DBL_STRING_LITERAL: DBL ('""' | ~('"'))+ DBL;
 INTEGER_LITERAL: DIGIT+;
+HEX_LITERAL: '0' [xX] [0-9a-fA-F]+;
 
 fragment TICK: '\'';
 fragment DBL: '"';
