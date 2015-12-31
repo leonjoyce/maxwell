@@ -83,7 +83,7 @@ column_options:
 primary_key: PRIMARY KEY;
 
 enumerated_values: enum_value (',' enum_value)*;
-enum_value: string_literal;
+enum_value: string_literal | hex_literal;
 
 charset_def: character_set | ASCII;
 character_set: ((CHARACTER SET) | CHARSET) charset_name;

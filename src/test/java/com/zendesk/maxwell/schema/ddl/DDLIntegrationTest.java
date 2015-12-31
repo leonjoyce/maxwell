@@ -307,4 +307,10 @@ public class DDLIntegrationTest extends AbstractMaxwellTest {
 			")"
 		);
 	}
+
+
+	@Test
+	public void testEnumWithHexDefault() throws Exception {
+		testIntegration("create table t1 (a enum(0xE28886, '1', '2') not null)");
+	}
 }
