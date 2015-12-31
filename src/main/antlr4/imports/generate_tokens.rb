@@ -211,6 +211,7 @@ FORCE
 BYTE
 UNICODE
 CHECK
+GEOMETRY
 )
 
 tokens_allowed_in_names = []
