@@ -52,6 +52,12 @@ public abstract class ColumnDef {
 		case "varbinary":
 			return new StringColumnDef(tableName, name, type, pos, "binary");
 		case "geometry":
+		case "geometrycollection":
+		case "linestring":
+		case "multilinestring":
+		case "multipoint":
+		case "multipolygon":
+		case "polygon":
 		case "point":
 			return new GeometryColumnDef(tableName, name, type, pos);
 		case "float":
