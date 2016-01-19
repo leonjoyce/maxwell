@@ -1,21 +1,31 @@
 package com.zendesk.maxwell.schema.ddl;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonAppend;
 import com.zendesk.maxwell.schema.Database;
 import com.zendesk.maxwell.schema.Schema;
 import com.zendesk.maxwell.schema.Table;
 
+@JsonAppend(attrs = @JsonAppend.Attr(propName = "type", value = "table-alter"))
+
 public class TableAlter extends SchemaChange {
+	@JsonProperty("database")
 	public String dbName;
+	@JsonProperty("table")
 	public String tableName;
+	@JsonProperty("columns")
 	public ArrayList<ColumnMod> columnMods;
-	public String newTableName;
+	@JsonProperty("new_database")
 	public String newDatabase;
+	@JsonProperty("new_table")
+	public String newTableName;
 
 	public String convertCharset;
 	public String defaultCharset;
+
+	@JsonProperty("primary_keys")
 	public List<String> pks;
 
 

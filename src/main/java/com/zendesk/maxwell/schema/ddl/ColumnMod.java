@@ -1,7 +1,6 @@
 package com.zendesk.maxwell.schema.ddl;
 
 import com.zendesk.maxwell.schema.Table;
-
 abstract class ColumnMod {
 	public String name;
 

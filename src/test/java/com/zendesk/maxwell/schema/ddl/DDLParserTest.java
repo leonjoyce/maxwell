@@ -5,12 +5,14 @@ import static org.junit.Assert.assertThat;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zendesk.maxwell.AbstractMaxwellTest;
 import org.antlr.v4.runtime.misc.NotNull;
 import org.junit.*;
@@ -241,8 +243,11 @@ public class DDLParserTest {
 	}
 
 	@Test
-	public void testModifyColumn() {
+	public void testModifyColumn() throws IOException {
 		TableAlter a = parseAlter("alter table c MODIFY column `foo` int(20) unsigned default 'foo' not null");
+
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.writeValue(System.out, a);
 
 		assertThat(a.columnMods.size(), is(1));
 		assertThat(a.columnMods.get(0), instanceOf(ChangeColumnMod.class));
