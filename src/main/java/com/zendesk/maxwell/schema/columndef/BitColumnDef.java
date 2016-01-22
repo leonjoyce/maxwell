@@ -5,8 +5,8 @@ import com.google.code.or.common.util.MySQLConstants;
 import java.math.BigInteger;
 
 public class BitColumnDef extends ColumnDef {
-	public BitColumnDef(String tableName, String name, String type, int pos) {
-		super(tableName, name, type, pos);
+	public BitColumnDef(String name, String type, int pos) {
+		super(name, type, pos);
 	}
 
 	@Override

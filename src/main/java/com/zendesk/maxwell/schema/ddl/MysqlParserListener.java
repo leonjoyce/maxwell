@@ -138,7 +138,7 @@ public class MysqlParserListener extends mysqlBaseListener {
 		String tableName = getTable(ctx.table_name());
 
 		TableAlter alterStatement = new TableAlter(dbName, tableName);
-		this.tableName = alterStatement.tableName;
+		this.tableName = alterStatement.table;
 
 		this.schemaChanges.add(alterStatement);
 	}
@@ -371,8 +371,7 @@ public class MysqlParserListener extends mysqlBaseListener {
 		}
 
 		colType = ColumnDef.unalias_type(colType.toLowerCase(), longStringFlag, columnLength, byteFlagToStringColumn);
-		ColumnDef c = ColumnDef.build(this.tableName,
-					                   name,
+		ColumnDef c = ColumnDef.build(name,
 					                   colEncoding,
 					                   colType.toLowerCase(),
 					                   -1,

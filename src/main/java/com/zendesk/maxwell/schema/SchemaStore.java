@@ -293,7 +293,7 @@ public class SchemaStore {
 			if ( cRS.getString("enum_values") != null )
 				enumValues = StringUtils.splitByWholeSeparatorPreserveAllTokens(cRS.getString("enum_values"), ",");
 
-			ColumnDef c = ColumnDef.build(t.getName(),
+			ColumnDef c = ColumnDef.build(
 					cRS.getString("name"), cRS.getString("encoding"),
 					cRS.getString("coltype"), i++,
 					cRS.getInt("is_signed") == 1,

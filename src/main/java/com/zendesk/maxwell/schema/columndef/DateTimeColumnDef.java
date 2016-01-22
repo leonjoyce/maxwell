@@ -7,8 +7,8 @@ import java.util.Date;
 import com.google.code.or.common.util.MySQLConstants;
 
 public class DateTimeColumnDef extends ColumnDef {
-	public DateTimeColumnDef(String tableName, String name, String type, int pos) {
-		super(tableName, name, type, pos);
+	public DateTimeColumnDef(String name, String type, int pos) {
+		super(name, type, pos);
 	}
 
 	private static SimpleDateFormat dateTimeFormatter;

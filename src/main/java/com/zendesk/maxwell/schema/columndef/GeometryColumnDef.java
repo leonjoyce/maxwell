@@ -7,8 +7,8 @@ import com.vividsolutions.jts.geom.Geometry;
  * Created by ben on 12/30/15.
  */
 public class GeometryColumnDef extends ColumnDef {
-	public GeometryColumnDef(String tableName, String name, String type, int pos) {
-		super(tableName, name, type, pos);
+	public GeometryColumnDef(String name, String type, int pos) {
+		super(name, type, pos);
 	}
 
 	@Override

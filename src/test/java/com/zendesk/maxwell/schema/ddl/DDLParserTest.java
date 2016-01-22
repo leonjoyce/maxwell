@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zendesk.maxwell.AbstractMaxwellTest;
 import org.antlr.v4.runtime.misc.NotNull;
@@ -85,7 +86,6 @@ public class DDLParserTest {
 
 		AddColumnMod m = (AddColumnMod) a.columnMods.get(0);
 		assertThat(m.name, is("baz"));
-		assertThat(m.definition.getTableName(), is("fie"));
 
 		BigIntColumnDef b = (BigIntColumnDef) m.definition;
 		assertThat(b.getType(), is("bigint"));
@@ -99,7 +99,6 @@ public class DDLParserTest {
 
 		AddColumnMod m = (AddColumnMod) a.columnMods.get(0);
 		assertThat(m.name, is("mocha"));
-		assertThat(m.definition.getTableName(), is("no"));
 
 		StringColumnDef b = (StringColumnDef) m.definition;
 		assertThat(b.getType(), is("varchar"));
@@ -247,7 +246,9 @@ public class DDLParserTest {
 		TableAlter a = parseAlter("alter table c MODIFY column `foo` int(20) unsigned default 'foo' not null");
 
 		ObjectMapper mapper = new ObjectMapper();
-		mapper.writeValue(System.out, a);
+		mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
+		mapper.writeValue(System.err, a);
 
 		assertThat(a.columnMods.size(), is(1));
 		assertThat(a.columnMods.get(0), instanceOf(ChangeColumnMod.class));

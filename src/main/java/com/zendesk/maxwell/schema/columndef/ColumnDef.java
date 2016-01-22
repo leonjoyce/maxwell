@@ -1,16 +1,18 @@
 package com.zendesk.maxwell.schema.columndef;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public abstract class ColumnDef {
-	protected final String tableName;
+	@JsonIgnore
 	protected final String name;
 	protected final String type;
 	protected String[] enumValues;
+	@JsonIgnore
 	private int pos;
 	public boolean signed;
 	public String encoding;
 
-	public ColumnDef(String tableName, String name, String type, int pos) {
-		this.tableName = tableName;
+	public ColumnDef(String name, String type, int pos) {
 		this.name = name.toLowerCase();
 		this.type = type;
 		this.pos = pos;
@@ -25,32 +27,32 @@ public abstract class ColumnDef {
 	}
 
 	public ColumnDef copy() {
-		return build(this.tableName, this.name, this.encoding, this.type, this.pos, this.signed, this.enumValues);
+		return build(this.name, this.encoding, this.type, this.pos, this.signed, this.enumValues);
 	}
 
-	public static ColumnDef build(String tableName, String name, String encoding, String type, int pos, boolean signed, String enumValues[]) {
+	public static ColumnDef build(String name, String encoding, String type, int pos, boolean signed, String enumValues[]) {
 		switch(type) {
 		case "tinyint":
 		case "smallint":
 		case "mediumint":
 		case "int":
-			return new IntColumnDef(tableName, name, type, pos, signed);
+			return new IntColumnDef(name, type, pos, signed);
 		case "bigint":
-			return new BigIntColumnDef(tableName, name, type, pos, signed);
+			return new BigIntColumnDef(name, type, pos, signed);
 		case "tinytext":
 		case "text":
 		case "mediumtext":
 		case "longtext":
 		case "varchar":
 		case "char":
-			return new StringColumnDef(tableName, name, type, pos, encoding);
+			return new StringColumnDef(name, type, pos, encoding);
 		case "tinyblob":
 		case "blob":
 		case "mediumblob":
 		case "longblob":
 		case "binary":
 		case "varbinary":
-			return new StringColumnDef(tableName, name, type, pos, "binary");
+			return new StringColumnDef(name, type, pos, "binary");
 		case "geometry":
 		case "geometrycollection":
 		case "linestring":
@@ -59,27 +61,27 @@ public abstract class ColumnDef {
 		case "multipolygon":
 		case "polygon":
 		case "point":
-			return new GeometryColumnDef(tableName, name, type, pos);
+			return new GeometryColumnDef(name, type, pos);
 		case "float":
 		case "double":
-			return new FloatColumnDef(tableName, name, type, pos);
+			return new FloatColumnDef(name, type, pos);
 		case "decimal":
-			return new DecimalColumnDef(tableName, name, type, pos);
+			return new DecimalColumnDef(name, type, pos);
 		case "date":
-			return new DateColumnDef(tableName, name, type, pos);
+			return new DateColumnDef(name, type, pos);
 		case "datetime":
 		case "timestamp":
-			return new DateTimeColumnDef(tableName, name, type, pos);
+			return new DateTimeColumnDef(name, type, pos);
 		case "year":
-			return new YearColumnDef(tableName, name, type, pos);
+			return new YearColumnDef(name, type, pos);
 		case "time":
-			return new TimeColumnDef(tableName, name, type, pos);
+			return new TimeColumnDef(name, type, pos);
 		case "enum":
-			return new EnumColumnDef(tableName, name, type, pos, enumValues);
+			return new EnumColumnDef(name, type, pos, enumValues);
 		case "set":
-			return new SetColumnDef(tableName, name, type, pos, enumValues);
+			return new SetColumnDef(name, type, pos, enumValues);
 		case "bit":
-			return new BitColumnDef(tableName, name, type, pos);
+			return new BitColumnDef(name, type, pos);
 		default:
 			throw new IllegalArgumentException("unsupported column type " + type);
 		}
@@ -168,10 +170,6 @@ public abstract class ColumnDef {
 
 	public String getName() {
 		return name;
-	}
-
-	public String getTableName() {
-		return tableName;
 	}
 
 	public String getType() {

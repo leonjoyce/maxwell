@@ -6,8 +6,8 @@ import com.google.code.or.common.util.MySQLConstants;
 public class IntColumnDef extends ColumnDef {
 	private final int bits;
 
-	public IntColumnDef(String tableName, String name, String type, int pos, boolean signed) {
-		super(tableName, name, type, pos);
+	public IntColumnDef(String name, String type, int pos, boolean signed) {
+		super(name, type, pos);
 		this.signed = signed;
 		this.bits = bitsFromType(type);
 	}

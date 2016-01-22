@@ -3,8 +3,8 @@ package com.zendesk.maxwell.schema.columndef;
 import com.google.code.or.common.util.MySQLConstants;
 
 public class FloatColumnDef extends ColumnDef {
-	public FloatColumnDef(String tableName, String name, String type, int pos) {
-		super(tableName, name, type, pos);
+	public FloatColumnDef(String name, String type, int pos) {
+		super(name, type, pos);
 	}
 
 	@Override

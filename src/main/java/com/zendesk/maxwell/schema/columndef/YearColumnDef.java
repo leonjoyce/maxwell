@@ -6,8 +6,8 @@ import java.sql.Date;
 import java.util.Calendar;
 
 public class YearColumnDef extends ColumnDef {
-	public YearColumnDef(String tableName, String name, String type, int pos) {
-		super(tableName, name, type, pos);
+	public YearColumnDef(String name, String type, int pos) {
+		super(name, type, pos);
 	}
 
 	@Override
