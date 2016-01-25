@@ -225,7 +225,7 @@ public class MysqlParserListener extends mysqlBaseListener {
 		boolean ifNotExists = ctx.if_not_exists() != null;
 
 		TableCreate createStatement = new TableCreate(dbName, tblName, ifNotExists);
-		this.tableName = createStatement.tableName;
+		this.tableName = createStatement.table;
 
 		this.schemaChanges.add(createStatement);
 	}

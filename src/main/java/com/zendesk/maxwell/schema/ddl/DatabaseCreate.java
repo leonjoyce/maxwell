@@ -1,28 +1,32 @@
 package com.zendesk.maxwell.schema.ddl;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.zendesk.maxwell.schema.Database;
 import com.zendesk.maxwell.schema.Schema;
 
 public class DatabaseCreate extends SchemaChange {
-	public final String dbName;
-	private final boolean ifNotExists;
-	public final String encoding;
+	public String name;
+
+	@JsonProperty(value = "if_not_exists")
+	private boolean ifNotExists;
+
+	public String encoding;
 
 	public DatabaseCreate(String dbName, boolean ifNotExists, String encoding) {
-		this.dbName = dbName;
+		this.name = dbName;
 		this.ifNotExists = ifNotExists;
 		this.encoding = encoding;
 	}
 
 	@Override
 	public Schema apply(Schema originalSchema) throws SchemaSyncError {
-		Database database = originalSchema.findDatabase(dbName);
+		Database database = originalSchema.findDatabase(name);
 
 		if ( database != null ) {
 			if ( ifNotExists )
 				return originalSchema;
 			else
-				throw new SchemaSyncError("Unexpectedly asked to create existing database " + dbName);
+				throw new SchemaSyncError("Unexpectedly asked to create existing database " + name);
 		}
 
 		Schema newSchema = originalSchema.copy();
@@ -33,7 +37,7 @@ public class DatabaseCreate extends SchemaChange {
 		else
 			createEncoding = newSchema.getEncoding();
 
-		database = new Database(dbName, createEncoding);
+		database = new Database(name, createEncoding);
 		newSchema.addDatabase(database);
 		return newSchema;
 	}

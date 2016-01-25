@@ -14,8 +14,6 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zendesk.maxwell.AbstractMaxwellTest;
-import org.antlr.v4.runtime.misc.NotNull;
 import org.junit.*;
 
 import com.zendesk.maxwell.schema.columndef.BigIntColumnDef;
@@ -306,8 +304,8 @@ public class DDLParserTest {
 	public void testCreateTable() {
 		TableCreate c = parseCreate("CREATE TABLE `foo` ( id int(11) auto_increment not null, `textcol` mediumtext character set 'utf8' not null )");
 
-		assertThat(c.dbName,  is("default_db"));
-		assertThat(c.tableName, is("foo"));
+		assertThat(c.database,  is("default_db"));
+		assertThat(c.table, is("foo"));
 
 		assertThat(c.columns.size(), is(2));
 		assertThat(c.columns.get(0).getName(), is("id"));
@@ -363,7 +361,7 @@ public class DDLParserTest {
 		TableCreate c = parseCreate("CREATE TABLE `foo` LIKE `bar`.`baz`");
 
 		assertThat(c, not(nullValue()));
-		assertThat(c.tableName, is("foo"));
+		assertThat(c.table, is("foo"));
 
 		assertThat(c.likeDB,    is("bar"));
 		assertThat(c.likeTable, is("baz"));
@@ -384,7 +382,7 @@ public class DDLParserTest {
 	public void testCreateDatabase() {
 		List<SchemaChange> changes = parse("CREATE DATABASE if not exists `foo` default character set='latin1'");
 		DatabaseCreate create = (DatabaseCreate) changes.get(0);
-		assertThat(create.dbName, is("foo"));
+		assertThat(create.name, is("foo"));
 		assertThat(create.encoding, is("latin1"));
 	}
 
@@ -392,7 +390,7 @@ public class DDLParserTest {
 	public void testCreateSchema() {
 		List<SchemaChange> changes = parse("CREATE SCHEMA if not exists `foo`");
 		DatabaseCreate create = (DatabaseCreate) changes.get(0);
-		assertThat(create.dbName, is("foo"));
+		assertThat(create.name, is("foo"));
 	}
 
 	@Test
@@ -430,7 +428,7 @@ public class DDLParserTest {
 
 	@Test
 	public void testCreateTableNamedPrimaryKey() {
-		/* not documented, but accepted and ignored to name the primary key. */
+		/* not documented, but accepted and ignored to table the primary key. */
 		TableCreate create = parseCreate("CREATE TABLE db (foo char(60) binary DEFAULT '' NOT NULL, PRIMARY KEY Host (foo,Db,User))");
 		assertThat(create, is(notNullValue()));
 		assertThat(create.pks.size(), is(3));

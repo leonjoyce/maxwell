@@ -2,44 +2,19 @@ package com.zendesk.maxwell.schema.columndef;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.DatabindContext;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.annotation.JsonTypeIdResolver;
-import com.fasterxml.jackson.databind.cfg.MapperConfig;
-import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import com.fasterxml.jackson.databind.jsontype.impl.TypeIdResolverBase;
-import com.fasterxml.jackson.databind.jsontype.impl.TypeNameIdResolver;
-
-import java.util.HashMap;
 
 @JsonTypeInfo(use=JsonTypeInfo.Id.CUSTOM, include=JsonTypeInfo.As.PROPERTY, property="type")
 @JsonTypeIdResolver( ColumnDefResolver.class )
 
-/*
-@JsonSubTypes({
-		@JsonSubTypes.Type(value = BigIntColumnDef.class, name = "bigint"),
-		@JsonSubTypes.Type(value = BitColumnDef.class, name = "bit"),
-		@JsonSubTypes.Type(value = DateColumnDef.class, name = "date"),
-		@JsonSubTypes.Type(value = DateTimeColumnDef.class, name = "datetime"),
-		@JsonSubTypes.Type(value = DecimalColumnDef.class, name = "decimal"),
-		@JsonSubTypes.Type(value = EnumColumnDef.class, name = "enum"),
-		@JsonSubTypes.Type(value = FloatColumnDef.class, name = "float"),
-		@JsonSubTypes.Type(value = GeometryColumnDef.class, name = "geometry"),
-		@JsonSubTypes.Type(value = IntColumnDef.class, name = "int"),
-		@JsonSubTypes.Type(value = SetColumnDef.class, name = "set"),
-		@JsonSubTypes.Type(value = StringColumnDef.class, name = "string"),
-		@JsonSubTypes.Type(value = TimeColumnDef.class, name = "time"),
-		@JsonSubTypes.Type(value = YearColumnDef.class, name = "year")
-})
-*/
 
 public abstract class ColumnDef {
 	protected String name;
-
-	@JsonProperty("mysql-type")
 	protected String type;
 
 	public String encoding;
