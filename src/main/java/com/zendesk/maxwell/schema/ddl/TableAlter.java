@@ -8,16 +8,14 @@ import com.zendesk.maxwell.schema.Database;
 import com.zendesk.maxwell.schema.Schema;
 import com.zendesk.maxwell.schema.Table;
 
-@JsonAppend(attrs = @JsonAppend.Attr(propName = "type", value = "table-alter"))
-
 public class TableAlter extends SchemaChange {
 	public String database;
 	public String table;
-	@JsonProperty("columns")
+	@JsonProperty("column_changes")
 	public ArrayList<ColumnMod> columnMods;
-	@JsonProperty("new_database")
+	@JsonProperty("rename_database")
 	public String newDatabase;
-	@JsonProperty("new_table")
+	@JsonProperty("rename_table")
 	public String newTableName;
 
 	public String convertCharset;
@@ -26,11 +24,14 @@ public class TableAlter extends SchemaChange {
 	@JsonProperty("primary_keys")
 	public List<String> pks;
 
+	public TableAlter() {
+		this.columnMods = new ArrayList<>();
+	}
 
 	public TableAlter(String database, String table) {
+		this();
 		this.database = database;
 		this.table = table;
-		this.columnMods = new ArrayList<>();
 	}
 
 	@Override

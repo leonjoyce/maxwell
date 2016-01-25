@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 public class StringColumnDef extends ColumnDef {
 	static final Logger LOGGER = LoggerFactory.getLogger(StringColumnDef.class);
+	public StringColumnDef () { }
 	public StringColumnDef(String name, String type, int pos, String encoding) {
 		super(name, type, pos);
 		this.encoding = encoding;

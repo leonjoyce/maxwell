@@ -1,16 +1,58 @@
 package com.zendesk.maxwell.schema.columndef;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.DatabindContext;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonTypeIdResolver;
+import com.fasterxml.jackson.databind.cfg.MapperConfig;
+import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
+import com.fasterxml.jackson.databind.jsontype.impl.TypeIdResolverBase;
+import com.fasterxml.jackson.databind.jsontype.impl.TypeNameIdResolver;
+
+import java.util.HashMap;
+
+@JsonTypeInfo(use=JsonTypeInfo.Id.CUSTOM, include=JsonTypeInfo.As.PROPERTY, property="type")
+@JsonTypeIdResolver( ColumnDefResolver.class )
+
+/*
+@JsonSubTypes({
+		@JsonSubTypes.Type(value = BigIntColumnDef.class, name = "bigint"),
+		@JsonSubTypes.Type(value = BitColumnDef.class, name = "bit"),
+		@JsonSubTypes.Type(value = DateColumnDef.class, name = "date"),
+		@JsonSubTypes.Type(value = DateTimeColumnDef.class, name = "datetime"),
+		@JsonSubTypes.Type(value = DecimalColumnDef.class, name = "decimal"),
+		@JsonSubTypes.Type(value = EnumColumnDef.class, name = "enum"),
+		@JsonSubTypes.Type(value = FloatColumnDef.class, name = "float"),
+		@JsonSubTypes.Type(value = GeometryColumnDef.class, name = "geometry"),
+		@JsonSubTypes.Type(value = IntColumnDef.class, name = "int"),
+		@JsonSubTypes.Type(value = SetColumnDef.class, name = "set"),
+		@JsonSubTypes.Type(value = StringColumnDef.class, name = "string"),
+		@JsonSubTypes.Type(value = TimeColumnDef.class, name = "time"),
+		@JsonSubTypes.Type(value = YearColumnDef.class, name = "year")
+})
+*/
 
 public abstract class ColumnDef {
-	@JsonIgnore
-	protected final String name;
-	protected final String type;
+	protected String name;
+
+	@JsonProperty("mysql-type")
+	protected String type;
+
+	public String encoding;
+
+	@JsonProperty("enums")
 	protected String[] enumValues;
+
 	@JsonIgnore
 	private int pos;
+
 	public boolean signed;
-	public String encoding;
+
+	public ColumnDef() { }
 
 	public ColumnDef(String name, String type, int pos) {
 		this.name = name.toLowerCase();
@@ -195,5 +237,81 @@ public abstract class ColumnDef {
 	public String[] getEnumValues() {
 		return enumValues;
 	}
+}
 
+class ColumnDefResolver extends TypeIdResolverBase {
+	@Override
+	public String idFromValue(Object value) {
+		return ((ColumnDef) value).getType();
+	}
+
+	@Override
+	public String idFromValueAndType(Object value, Class<?> suggestedType) {
+		return idFromValue(value);
+	}
+
+	@Override
+	public JsonTypeInfo.Id getMechanism() {
+		return JsonTypeInfo.Id.CUSTOM;
+	}
+
+	@Override
+	public JavaType typeFromId(DatabindContext context, String id) {
+		ObjectMapper m = new ObjectMapper();
+
+		switch(id) {
+			case "tinyint":
+			case "smallint":
+			case "mediumint":
+			case "int":
+				return m.constructType(IntColumnDef.class);
+			case "bigint":
+				return m.constructType(BigIntColumnDef.class);
+			case "tinytext":
+			case "text":
+			case "mediumtext":
+			case "longtext":
+			case "varchar":
+			case "char":
+				return m.constructType(StringColumnDef.class);
+			case "tinyblob":
+			case "blob":
+			case "mediumblob":
+			case "longblob":
+			case "binary":
+			case "varbinary":
+				return m.constructType(StringColumnDef.class);
+			case "geometry":
+			case "geometrycollection":
+			case "linestring":
+			case "multilinestring":
+			case "multipoint":
+			case "multipolygon":
+			case "polygon":
+			case "point":
+				return m.constructType(GeometryColumnDef.class);
+			case "float":
+			case "double":
+				return m.constructType(FloatColumnDef.class);
+			case "decimal":
+				return m.constructType(DecimalColumnDef.class);
+			case "date":
+				return m.constructType(DateColumnDef.class);
+			case "datetime":
+			case "timestamp":
+				return m.constructType(DateTimeColumnDef.class);
+			case "year":
+				return m.constructType(YearColumnDef.class);
+			case "time":
+				return m.constructType(TimeColumnDef.class);
+			case "enum":
+				return m.constructType(EnumColumnDef.class);
+			case "set":
+				return m.constructType(SetColumnDef.class);
+			case "bit":
+				return m.constructType(BitColumnDef.class);
+			default:
+				throw new IllegalArgumentException("unsupported column type " + id);
+		}
+	}
 }

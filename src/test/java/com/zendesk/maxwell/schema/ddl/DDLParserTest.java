@@ -243,12 +243,15 @@ public class DDLParserTest {
 
 	@Test
 	public void testModifyColumn() throws IOException {
-		TableAlter a = parseAlter("alter table c MODIFY column `foo` int(20) unsigned default 'foo' not null");
+		TableAlter a = parseAlter("alter table c MODIFY column `foo` bigint(20) unsigned default 'foo' not null");
 
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
-		mapper.writeValue(System.err, a);
+		String json = mapper.writeValueAsString(a);
+		System.err.print(json);
+
+		SchemaChange s = mapper.readValue(json.getBytes(), SchemaChange.class);
 
 		assertThat(a.columnMods.size(), is(1));
 		assertThat(a.columnMods.get(0), instanceOf(ChangeColumnMod.class));
