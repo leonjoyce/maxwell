@@ -382,7 +382,7 @@ public class DDLParserTest {
 	public void testCreateDatabase() {
 		List<SchemaChange> changes = parse("CREATE DATABASE if not exists `foo` default character set='latin1'");
 		DatabaseCreate create = (DatabaseCreate) changes.get(0);
-		assertThat(create.name, is("foo"));
+		assertThat(create.database, is("foo"));
 		assertThat(create.encoding, is("latin1"));
 	}
 
@@ -390,7 +390,7 @@ public class DDLParserTest {
 	public void testCreateSchema() {
 		List<SchemaChange> changes = parse("CREATE SCHEMA if not exists `foo`");
 		DatabaseCreate create = (DatabaseCreate) changes.get(0);
-		assertThat(create.name, is("foo"));
+		assertThat(create.database, is("foo"));
 	}
 
 	@Test
