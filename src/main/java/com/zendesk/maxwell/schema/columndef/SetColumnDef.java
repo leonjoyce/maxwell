@@ -3,6 +3,7 @@ package com.zendesk.maxwell.schema.columndef;
 import java.util.ArrayList;
 import java.util.Arrays;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.lang.StringUtils;
 
 import com.google.code.or.common.util.MySQLConstants;
@@ -13,6 +14,7 @@ public class SetColumnDef extends ColumnDef {
 		super(name, type, pos);
 		this.enumValues = enumValues;
 	}
+
 
 	@Override
 	public boolean matchesMysqlType(int type) {

@@ -2,10 +2,12 @@ package com.zendesk.maxwell.schema;
 
 import java.util.*;
 
+import com.zendesk.maxwell.schema.columndef.EnumeratedColumnDef;
 import org.apache.commons.lang.StringUtils;
 
 import com.zendesk.maxwell.schema.columndef.ColumnDef;
 import com.zendesk.maxwell.schema.columndef.StringColumnDef;
+import org.apache.commons.lang.enums.Enum;
 
 public class Table {
 	private final List<ColumnDef> columnList;
@@ -115,19 +117,33 @@ public class Table {
 									  + " vs "
 									  + other.getPos()
 									  + " in " + nameB);
-				} else if ( !Arrays.deepEquals(column.getEnumValues(), other.getEnumValues()) ) {
-					diffs.add(colName + "has an enum value mismatch, "
-									  + StringUtils.join(column.getEnumValues(), ",")
-									  + " vs "
-									  + StringUtils.join(other.getEnumValues(), ",")
-									  + " in " + nameB);
+				}
 
-				} else if ( !Objects.equals(column.getEncoding(), other.getEncoding()) ) {
-					diffs.add(colName + "has an encoding mismatch, "
-						+ "'" + column.getEncoding() + "'"
-						+ " vs "
-						+ "'" + other.getEncoding() + "'"
-						+ " in " + nameB);
+				if ( column instanceof EnumeratedColumnDef ) {
+					EnumeratedColumnDef enumA, enumB;
+					enumA = (EnumeratedColumnDef) column;
+					enumB = (EnumeratedColumnDef) other;
+					if ( !Arrays.deepEquals(enumA.getEnumValues(), enumB.getEnumValues()) ) {
+						diffs.add(colName + "has an enum value mismatch, "
+								+ StringUtils.join(enumA.getEnumValues(), ",")
+								+ " vs "
+								+ StringUtils.join(enumB.getEnumValues(), ",")
+								+ " in " + nameB);
+					}
+				}
+
+				if ( column instanceof StringColumnDef ) {
+					StringColumnDef stringA, stringB;
+					stringA = (StringColumnDef) column;
+					stringB = (StringColumnDef) other;
+
+					if ( !Objects.equals(stringA.encoding, stringB.encoding) ) {
+						diffs.add(colName + "has an encoding mismatch, "
+								+ "'" + stringA.encoding + "'"
+								+ " vs "
+								+ "'" + stringB.encoding + "'"
+								+ " in " + nameB);
+					}
 
 				}
 			}

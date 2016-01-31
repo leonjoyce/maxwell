@@ -17,15 +17,13 @@ public abstract class ColumnDef {
 	protected String name;
 	protected String type;
 
-	public String encoding;
-
-	@JsonProperty("enums")
-	protected String[] enumValues;
+	/*
+	   ignore all the type-specific column information -- the subclasses will override
+	   the definition and include it for those clasess.
+	 */
 
 	@JsonIgnore
-	private int pos;
-
-	public boolean signed;
+	protected int pos;
 
 	public ColumnDef() { }
 
@@ -33,7 +31,6 @@ public abstract class ColumnDef {
 		this.name = name.toLowerCase();
 		this.type = type;
 		this.pos = pos;
-		this.signed = false;
 	}
 
 	public abstract boolean matchesMysqlType(int type);
@@ -43,9 +40,7 @@ public abstract class ColumnDef {
 		return value;
 	}
 
-	public ColumnDef copy() {
-		return build(this.name, this.encoding, this.type, this.pos, this.signed, this.enumValues);
-	}
+	abstract public ColumnDef copy();
 
 	public static ColumnDef build(String name, String encoding, String type, int pos, boolean signed, String enumValues[]) {
 		switch(type) {
@@ -199,18 +194,6 @@ public abstract class ColumnDef {
 
 	public void setPos(int i) {
 		this.pos = i;
-	}
-
-	public String getEncoding() {
-		return this.encoding;
-	}
-
-	public boolean getSigned() {
-		return this.signed;
-	}
-
-	public String[] getEnumValues() {
-		return enumValues;
 	}
 }
 

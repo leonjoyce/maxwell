@@ -22,4 +22,9 @@ public class DecimalColumnDef extends ColumnDef {
 		return d.toEngineeringString();
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new DecimalColumnDef();
+	}
+
 }

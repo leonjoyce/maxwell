@@ -5,6 +5,8 @@ import com.google.code.or.common.util.MySQLConstants;
 
 public class IntColumnDef extends ColumnDef {
 	public int bits;
+	public boolean signed;
+
 	public IntColumnDef () { }
 	public IntColumnDef(String name, String type, int pos, boolean signed) {
 		super(name, type, pos);
@@ -50,6 +52,11 @@ public class IntColumnDef extends ColumnDef {
 	}
 
 	@Override
+	public ColumnDef copy() {
+		return new IntColumnDef(name, type, pos, signed);
+	}
+
+	@Override
 	public boolean matchesMysqlType(int type) {
 		switch(this.bits) {
 		case 8:
@@ -79,11 +86,4 @@ public class IntColumnDef extends ColumnDef {
 			return 0;
 		}
 	}
-
-
-	@Override
-	public boolean getSigned() {
-		return signed;
-	}
-
 }

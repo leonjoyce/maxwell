@@ -1,5 +1,11 @@
 CREATE database `ser1`;
 -> { type: "database-create", database: "ser1", encoding: null, if-not-exists: false }
-CREATE table `ser1`.`tbl1` ( id int(10), `a` varchar(255) character set latin1, `b` mediumtext, `c` enum('a','b'), primary KEY(id) );
--> { type: "table-create", database: "ser1", table: "tbl1", columns: [ { name: "id", definition: { type: "int" } }, { name: "a", definition: { type: "varchar" } } ] }
+CREATE table `ser1`.`tbl1` ( id mediumint, `a` varchar(255) character set latin1, `b` mediumtext, `c` enum('a','b'), primary KEY(id) );
+-> {
+     type: "table-create", database: "ser1", table: "tbl1",
+     columns: [ { name: "id", type: "int", signed: true },
+                { name: "a", type: "varchar", encoding: null },
+                { name: "c", type: "enum", enum_values: ["a", "b"] }
+              ]
+    }
 

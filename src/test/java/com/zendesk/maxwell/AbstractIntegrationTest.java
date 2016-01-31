@@ -79,17 +79,29 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 
 		mapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
 
+		String jsonBuffer = null;
 		while ( reader.ready() ) {
 			String line = reader.readLine();
-			if ( line.matches("^\\s*$")) {
-				continue;
-			}
 
 			if ( line.matches("^\\s*\\->\\s*\\{.*") ) {
 				line = line.replaceAll("^\\s*\\->\\s*", "");
 
-				ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(line, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
-				System.out.println("added json assert: " + line);
+				if (line.matches("^.*\\}$")) {
+					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(line, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+					System.out.println("added json assert: " + line);
+				} else {
+					jsonBuffer = line;
+				}
+			} else if ( jsonBuffer != null ) {
+				if (line.matches("^\\s*$")) {
+					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+					System.out.println("added json assert: " + line);
+					jsonBuffer = null;
+				} else {
+					jsonBuffer = jsonBuffer + line.trim();
+				}
+			} else if ( line.matches("^\\s*$")) {
+				continue;
 			} else {
 				ret.inputSQL.add(line);
 				System.out.println("added sql statement: " + line);

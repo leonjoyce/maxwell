@@ -40,4 +40,9 @@ public class DateColumnDef extends ColumnDef {
 		return formatDate(value);
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new DateColumnDef(name, type, pos);
+	}
+
 }

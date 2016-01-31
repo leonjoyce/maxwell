@@ -2,6 +2,7 @@ package com.zendesk.maxwell.schema.columndef;
 
 import java.nio.charset.Charset;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang.StringEscapeUtils;
@@ -12,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class StringColumnDef extends ColumnDef {
+	public String encoding;
+
 	static final Logger LOGGER = LoggerFactory.getLogger(StringColumnDef.class);
 	public StringColumnDef () { }
 	public StringColumnDef(String name, String type, int pos, String encoding) {
@@ -35,7 +38,7 @@ public class StringColumnDef extends ColumnDef {
 	public String toSQL(Object value) {
 		byte[] b = (byte[]) value;
 
-		if ( getEncoding().equals("utf8") || getEncoding().equals("utf8mb4")) {
+		if ( encoding.equals("utf8") || encoding.equals("utf8mb4")) {
 			return quoteString(new String(b));
 		} else {
 			return "x'" +  Hex.encodeHexString( b ) + "'";

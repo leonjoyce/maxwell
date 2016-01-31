@@ -8,6 +8,8 @@ public class FloatColumnDef extends ColumnDef {
 		super(name, type, pos);
 	}
 
+	public boolean signed;
+
 	@Override
 	public boolean matchesMysqlType(int type) {
 		if ( getType().equals("float") )

@@ -1,13 +1,17 @@
 package com.zendesk.maxwell.schema.columndef;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.code.or.common.util.MySQLConstants;
 
-public class EnumColumnDef extends ColumnDef {
+public class EnumColumnDef extends EnumeratedColumnDef {
 	public EnumColumnDef () { }
 	public EnumColumnDef(String name, String type, int pos, String[] enumValues) {
 		super(name, type, pos);
 		this.enumValues = enumValues;
 	}
+
+	@JsonProperty("enum_values")
+	protected String[] enumValues;
 
 	@Override
 	public boolean matchesMysqlType(int type) {
