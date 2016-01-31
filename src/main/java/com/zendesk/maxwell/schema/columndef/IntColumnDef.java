@@ -5,7 +5,8 @@ import com.google.code.or.common.util.MySQLConstants;
 
 public class IntColumnDef extends ColumnDef {
 	public int bits;
-	public boolean signed;
+
+	protected boolean signed;
 
 	public IntColumnDef () { }
 	public IntColumnDef(String name, String type, int pos, boolean signed) {
@@ -86,4 +87,13 @@ public class IntColumnDef extends ColumnDef {
 			return 0;
 		}
 	}
+
+	public boolean isSigned() {
+		return signed;
+	}
+
+	public void setSigned(boolean signed) {
+		this.signed = signed;
+	}
+
 }

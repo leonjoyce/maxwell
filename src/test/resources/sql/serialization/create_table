@@ -3,9 +3,16 @@ CREATE database `ser1`;
 CREATE table `ser1`.`tbl1` ( id mediumint, `a` varchar(255) character set latin1, `b` mediumtext, `c` enum('a','b'), primary KEY(id) );
 -> {
      type: "table-create", database: "ser1", table: "tbl1",
-     columns: [ { name: "id", type: "int", signed: true },
-                { name: "a", type: "varchar", encoding: null },
-                { name: "c", type: "enum", enum_values: ["a", "b"] }
-              ]
-    }
+     columns: [
+                { name: "id", type: "mediumint", signed: true, bits: 24 },
+                { name: "a",  type: "varchar", encoding: "latin1" },
+                { name: "b",  type: "mediumtext", encoding: null },
+                { name: "c",  type: "enum", enum-values: ["a", "b"] }
+              ],
+     primary-key: [ "id" ],
+     encoding: null,
+     like-db: null,
+     like-table: null,
+     if-not-exists: false
+   }
 

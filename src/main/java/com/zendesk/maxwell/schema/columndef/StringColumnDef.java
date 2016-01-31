@@ -13,13 +13,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class StringColumnDef extends ColumnDef {
-	public String encoding;
+	protected String encoding;
 
 	static final Logger LOGGER = LoggerFactory.getLogger(StringColumnDef.class);
 	public StringColumnDef () { }
 	public StringColumnDef(String name, String type, int pos, String encoding) {
 		super(name, type, pos);
 		this.encoding = encoding;
+	}
+
+	public String getEncoding() {
+		return encoding;
 	}
 
 	public void setDefaultEncoding(String e) {
@@ -74,10 +78,16 @@ public class StringColumnDef extends ColumnDef {
 		}
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new StringColumnDef(name, type, pos, encoding);
+	}
+
 	private String quoteString(String s) {
 		String escaped = StringEscapeUtils.escapeSql(s);
 		escaped = escaped.replaceAll("\n", "\\\\n");
 		escaped = escaped.replaceAll("\r", "\\\\r");
 		return "'" + escaped + "'";
 	}
+
 }

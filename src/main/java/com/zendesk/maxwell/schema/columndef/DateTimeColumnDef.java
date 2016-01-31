@@ -67,4 +67,9 @@ public class DateTimeColumnDef extends ColumnDef {
 		return formatValue(value);
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new DateColumnDef(name, type, pos);
+	}
+
 }

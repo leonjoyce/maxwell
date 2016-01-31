@@ -8,13 +8,11 @@ import org.apache.commons.lang.StringUtils;
 
 import com.google.code.or.common.util.MySQLConstants;
 
-public class SetColumnDef extends ColumnDef {
+public class SetColumnDef extends EnumeratedColumnDef {
 	public SetColumnDef () { }
 	public SetColumnDef(String name, String type, int pos, String[] enumValues) {
-		super(name, type, pos);
-		this.enumValues = enumValues;
+		super(name, type, pos, enumValues);
 	}
-
 
 	@Override
 	public boolean matchesMysqlType(int type) {
@@ -29,6 +27,11 @@ public class SetColumnDef extends ColumnDef {
 	@Override
 	public Object asJSON(Object value) {
 		return asList(value);
+	}
+
+	@Override
+	public ColumnDef copy() {
+		return new SetColumnDef(name, type, pos, enumValues);
 	}
 
 	private ArrayList<String> asList(Object value) {

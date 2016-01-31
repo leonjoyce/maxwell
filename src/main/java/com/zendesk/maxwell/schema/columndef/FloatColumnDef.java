@@ -23,4 +23,9 @@ public class FloatColumnDef extends ColumnDef {
 		return value.toString();
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new FloatColumnDef(name, type, pos);
+	}
+
 }

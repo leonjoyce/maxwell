@@ -12,17 +12,18 @@ public class TableCreate extends SchemaChange {
 	public String database;
 	public String table;
 	public ArrayList<ColumnDef> columns;
-	@JsonProperty("primary_keys")
+
+	@JsonProperty("primary-key")
 	public ArrayList<String> pks;
 	public String encoding;
 
-	@JsonProperty("like_db")
+	@JsonProperty("like-db")
 	public String likeDB;
 
-	@JsonProperty("like_table")
+	@JsonProperty("like-table")
 	public String likeTable;
 
-	@JsonProperty("if_not_exists")
+	@JsonProperty("if-not-exists")
 	public boolean ifNotExists;
 
 	public TableCreate() {

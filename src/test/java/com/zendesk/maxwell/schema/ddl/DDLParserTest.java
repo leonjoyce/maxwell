@@ -14,6 +14,7 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zendesk.maxwell.schema.columndef.ColumnDef;
 import org.junit.*;
 
 import com.zendesk.maxwell.schema.columndef.BigIntColumnDef;
@@ -75,7 +76,7 @@ public class DDLParserTest {
 		IntColumnDef i = (IntColumnDef) m.definition;
 		assertThat(i.getName(), is("int"));
 		assertThat(i.getType(), is("int"));
-		assertThat(i.getSigned(), is(false));
+		assertThat(i.isSigned(), is(false));
 	}
 
 	@Test
@@ -87,7 +88,7 @@ public class DDLParserTest {
 
 		BigIntColumnDef b = (BigIntColumnDef) m.definition;
 		assertThat(b.getType(), is("bigint"));
-		assertThat(b.getSigned(), is(true));
+		assertThat(b.isSigned(), is(true));
 		assertThat(b.getName(), is("baz"));
 	}
 
@@ -420,10 +421,15 @@ public class DDLParserTest {
 	@Test
 	public void testCharsetPositionIndependence() {
 		TableCreate create = parseCreate("CREATE TABLE `foo` (id varchar(1) NOT NULL character set 'foo')");
-		assertThat(create.columns.get(0).encoding, is("foo"));
+		ColumnDef c = create.columns.get(0);
+		assertThat(c, is(instanceOf(StringColumnDef.class)));
+
+		assertThat(((StringColumnDef) c).getEncoding(), is("foo"));
 
 		create = parseCreate("CREATE TABLE `foo` (id varchar(1) character set 'foo' NOT NULL)");
-		assertThat(create.columns.get(0).encoding, is("foo"));
+		c = create.columns.get(0);
+		assertThat(c, is(instanceOf(StringColumnDef.class)));
+		assertThat(((StringColumnDef) c).getEncoding(), is("foo"));
 	}
 
 	@Test

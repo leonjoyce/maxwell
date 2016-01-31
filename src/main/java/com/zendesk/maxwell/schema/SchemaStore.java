@@ -13,12 +13,12 @@ import java.util.*;
 
 import com.zendesk.maxwell.CaseSensitivity;
 import com.zendesk.maxwell.MaxwellContext;
+import com.zendesk.maxwell.schema.columndef.*;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.zendesk.maxwell.BinlogPosition;
-import com.zendesk.maxwell.schema.columndef.ColumnDef;
 import com.zendesk.maxwell.schema.ddl.SchemaSyncError;
 
 public class SchemaStore {
@@ -124,19 +124,33 @@ public class SchemaStore {
 
 
 				for (ColumnDef c : t.getColumnList()) {
-					String [] enumValues = c.getEnumValues();
 					String enumValuesSQL = null;
 
-					if ( enumValues != null ) {
-						enumValuesSQL = StringUtils.join(enumValues, ",");
+					if ( c instanceof EnumeratedColumnDef ) {
+						EnumeratedColumnDef enumColumn = (EnumeratedColumnDef) c;
+						enumValuesSQL = StringUtils.join(enumColumn.getEnumValues(), ",");
 					}
 
 					columnData.add(schemaId);
 					columnData.add(tableId);
 					columnData.add(c.getName());
-					columnData.add(c.getEncoding());
+
+					if ( c instanceof StringColumnDef ) {
+						columnData.add(((StringColumnDef) c).getEncoding());
+					} else {
+						columnData.add(null);
+					}
+
 					columnData.add(c.getType());
-					columnData.add(c.getSigned() ? 1 : 0);
+
+					if ( c instanceof IntColumnDef ) {
+						columnData.add(((IntColumnDef) c).isSigned() ? 1 : 0);
+					} else if ( c instanceof BigIntColumnDef ) {
+						columnData.add(((BigIntColumnDef) c).isSigned() ? 1 : 0);
+					} else {
+						columnData.add(0);
+					}
+
 					columnData.add(enumValuesSQL);
 				}
 

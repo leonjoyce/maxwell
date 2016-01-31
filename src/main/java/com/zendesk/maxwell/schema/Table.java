@@ -137,11 +137,11 @@ public class Table {
 					stringA = (StringColumnDef) column;
 					stringB = (StringColumnDef) other;
 
-					if ( !Objects.equals(stringA.encoding, stringB.encoding) ) {
+					if ( !Objects.equals(stringA.getEncoding(), stringB.getEncoding()) ) {
 						diffs.add(colName + "has an encoding mismatch, "
-								+ "'" + stringA.encoding + "'"
+								+ "'" + stringA.getEncoding() + "'"
 								+ " vs "
-								+ "'" + stringB.encoding + "'"
+								+ "'" + stringB.getEncoding() + "'"
 								+ " in " + nameB);
 					}
 

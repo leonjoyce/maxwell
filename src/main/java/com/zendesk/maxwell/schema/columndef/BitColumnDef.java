@@ -25,6 +25,11 @@ public class BitColumnDef extends ColumnDef {
 		}
 	}
 
+	@Override
+	public ColumnDef copy() {
+		return new BitColumnDef(name, type, pos);
+	}
+
 	private BigInteger bytesToBigInteger(byte[] bytes) {
 		BigInteger res = BigInteger.ZERO;
 
