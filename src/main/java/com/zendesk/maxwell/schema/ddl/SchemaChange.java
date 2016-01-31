@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.zendesk.maxwell.MaxwellFilter;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -60,8 +61,10 @@ public abstract class SchemaChange {
 	}
 
 	private static boolean matchesBlacklist(String sql) {
-		for ( Pattern p : SQL_BLACKLIST ) {
-			if ( p.matcher(sql).find() )
+		sql = sql.replaceAll("/\\*!\\d+\\s*(.*)\\*/", "$1");
+
+		for (Pattern p : SQL_BLACKLIST) {
+			if (p.matcher(sql).find())
 				return true;
 		}
 
@@ -110,4 +113,5 @@ public abstract class SchemaChange {
 		}
 	}
 
+	public abstract boolean isBlacklisted(MaxwellFilter filter);
 }

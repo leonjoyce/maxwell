@@ -1,8 +1,8 @@
 package com.zendesk.maxwell.schema.ddl;
 
 import java.util.ArrayList;
-
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.zendesk.maxwell.MaxwellFilter;
 import com.zendesk.maxwell.schema.Database;
 import com.zendesk.maxwell.schema.Schema;
 import com.zendesk.maxwell.schema.Table;
@@ -79,4 +79,14 @@ public class TableCreate extends SchemaChange {
 		t.rename(this.table);
 		d.addTable(t);
 	}
+
+	@Override
+	public boolean isBlacklisted(MaxwellFilter filter) {
+		if ( filter == null ) {
+			return false;
+		} else {
+			return filter.isTableBlacklisted(this.tableName);
+		}
+	}
+
 }
