@@ -85,7 +85,7 @@ public class TableCreate extends SchemaChange {
 		if ( filter == null ) {
 			return false;
 		} else {
-			return filter.isTableBlacklisted(this.tableName);
+			return filter.isTableBlacklisted(this.table);
 		}
 	}
 
