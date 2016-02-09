@@ -88,14 +88,12 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 
 				if (line.matches("^.*\\}$")) {
 					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(line, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
-					System.out.println("added json assert: " + line);
 				} else {
 					jsonBuffer = line;
 				}
 			} else if ( jsonBuffer != null ) {
 				if (line.matches("^\\s*$")) {
 					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
-					System.out.println("added json assert: " + line);
 					jsonBuffer = null;
 				} else {
 					jsonBuffer = jsonBuffer + line.trim();

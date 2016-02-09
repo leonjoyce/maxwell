@@ -212,6 +212,7 @@ public class DDLParserTest {
 	@Test
 	public void testSQLBlacklist() {
 		String testSQL[] = {
+			"CREATE -- comment\nEVENT foo",
 			"/*!50003 DROP FUNCTION IF EXISTS `DAY_NAME_FROM_NUMER` */",
 			"ALTER DEFINER=foo VIEW",
 			"CREATE VIEW foo",
@@ -221,7 +222,8 @@ public class DDLParserTest {
 			"DROP EVENT foo bar",
 			"ALTER ALGORITHM = UNDEFINED DEFINER='view'@'localhost' SQL SECURITY DEFINER VIEW `fooview` as (SELECT * FROM FOO)"
 				+ "VIEW view_name [(alskdj lk jdlfka j dlkjd lk",
-			"CREATE TEMPORARY TABLE 172898_16841_transmem SELECT t.* FROM map.transmem AS t"
+			"CREATE TEMPORARY TABLE 172898_16841_transmem SELECT t.* FROM map.transmem AS t",
+			"/* hi bob */ CREATE EVENT FOO"
 		};
 
 		for ( String s : testSQL ) {
@@ -465,7 +467,6 @@ public class DDLParserTest {
 		int i = 1;
 		List<String> lines = Files.readAllLines(Paths.get(getSQLDir() + "/ddl/mysql-test-fixed.sql"), Charset.defaultCharset());
 		for ( String sql: lines ) {
-			System.out.println("Line: " + i++);
 			parse(sql);
 		}
 	}
