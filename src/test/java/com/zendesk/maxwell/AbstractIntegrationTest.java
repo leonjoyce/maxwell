@@ -102,7 +102,6 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 				continue;
 			} else {
 				ret.inputSQL.add(line);
-				System.out.println("added sql statement: " + line);
 			}
 		}
 		reader.close();

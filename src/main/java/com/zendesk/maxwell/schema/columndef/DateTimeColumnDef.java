@@ -69,7 +69,7 @@ public class DateTimeColumnDef extends ColumnDef {
 
 	@Override
 	public ColumnDef copy() {
-		return new DateColumnDef(name, type, pos);
+		return new DateTimeColumnDef(name, type, pos);
 	}
 
 }
