@@ -10,14 +10,13 @@ public class DatabaseCreate extends SchemaChange {
 
 	@JsonProperty(value = "if-not-exists")
 	public boolean ifNotExists;
-	public String encoding;
+	public String charset;
 
-	public DatabaseCreate() { }  // for deserialization
-
-	public DatabaseCreate(String dbName, boolean ifNotExists, String encoding) {
+	public DatabaseCreate() { } // for deserialization
+	public DatabaseCreate(String dbName, boolean ifNotExists, String charset) {
 		this.database = dbName;
 		this.ifNotExists = ifNotExists;
-		this.encoding = encoding;
+		this.charset = charset;
 	}
 
 	@Override
@@ -33,13 +32,13 @@ public class DatabaseCreate extends SchemaChange {
 
 		Schema newSchema = originalSchema.copy();
 
-		String createEncoding;
-		if ( encoding != null )
-			createEncoding = encoding;
+		String createCharset;
+		if ( charset != null )
+			createCharset = charset;
 		else
-			createEncoding = newSchema.getEncoding();
+			createCharset = newSchema.getEncoding();
 
-		database = new Database(this.database, createEncoding);
+		database = new Database(this.database, createCharset);
 		newSchema.addDatabase(database);
 		return newSchema;
 	}

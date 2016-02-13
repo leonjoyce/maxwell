@@ -15,7 +15,7 @@ public class TableCreate extends SchemaChange {
 
 	@JsonProperty("primary-key")
 	public ArrayList<String> pks;
-	public String encoding;
+	public String charset;
 
 	@JsonProperty("like-db")
 	public String likeDB;
@@ -58,7 +58,7 @@ public class TableCreate extends SchemaChange {
 					throw new SchemaSyncError("Unexpectedly asked to create existing table " + this.table);
 				}
 			}
-			Table t = d.buildTable(this.table, this.encoding, this.columns, this.pks);
+			Table t = d.buildTable(this.table, this.charset, this.columns, this.pks);
 			t.setDefaultColumnEncodings();
 		}
 

@@ -104,7 +104,7 @@ public class Table {
 			if ( other == null )
 				diffs.add(b.fullName() + " is missing column " + column.getName() + " in " + nameB);
 			else {
-                String colName = a.fullName() + ".`" + column.getName() + "` ";
+				String colName = a.fullName() + ".`" + column.getName() + "` ";
 				if ( !column.getType().equals(other.getType()) ) {
 					diffs.add(colName + "has a type mismatch, "
 									  + column.getType()

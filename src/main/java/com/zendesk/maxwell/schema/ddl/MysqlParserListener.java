@@ -114,7 +114,7 @@ public class MysqlParserListener extends mysqlBaseListener {
 
 		List<Default_character_setContext> charSet = ctx.alter_database_definition().default_character_set();
 		if ( charSet.size() > 0 ) {
-			alter.characterSet = unquote_literal(charSet.get(0).getText());
+			alter.charset = unquote_literal(charSet.get(0).getText());
 		}
 
 		this.schemaChanges.add(alter);
@@ -235,7 +235,7 @@ public class MysqlParserListener extends mysqlBaseListener {
 	@Override
 	public void exitCreation_character_set(Creation_character_setContext ctx) {
 		TableCreate tableCreate = (TableCreate) schemaChanges.get(0);
-		tableCreate.encoding = unquote_literal(ctx.charset_name().getText());
+		tableCreate.charset = unquote_literal(ctx.charset_name().getText());
 	}
 
 	@Override
@@ -394,11 +394,11 @@ public class MysqlParserListener extends mysqlBaseListener {
 	public void exitCreate_database(mysqlParser.Create_databaseContext ctx) {
 		String dbName = unquote(ctx.name().getText());
 		boolean ifNotExists = ctx.if_not_exists() != null;
-		String encoding = null;
+		String charset = null;
 		if ( ctx.default_character_set().size() > 0 ) {
-			encoding = unquote_literal(ctx.default_character_set().get(0).charset_name().getText());
+			charset = unquote_literal(ctx.default_character_set().get(0).charset_name().getText());
 		}
 
-		this.schemaChanges.add(new DatabaseCreate(dbName, ifNotExists, encoding));
+		this.schemaChanges.add(new DatabaseCreate(dbName, ifNotExists, charset));
 	}
 }
