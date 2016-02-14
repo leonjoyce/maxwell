@@ -2,6 +2,7 @@ package com.zendesk.maxwell.schema.ddl;
 
 import java.util.*;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonAppend;
 import com.zendesk.maxwell.MaxwellFilter;
@@ -9,6 +10,7 @@ import com.zendesk.maxwell.schema.Database;
 import com.zendesk.maxwell.schema.Schema;
 import com.zendesk.maxwell.schema.Table;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TableAlter extends SchemaChange {
 	public String database;
 	public String table;
@@ -18,6 +20,7 @@ public class TableAlter extends SchemaChange {
 	public String newDatabase;
 	@JsonProperty("new-table")
 	public String newTableName;
+
 
 	@JsonProperty("convert-charset")
 	public String convertCharset;
@@ -41,6 +44,7 @@ public class TableAlter extends SchemaChange {
 	public String toString() {
 		return "TableAlter<database: " + database + ", table:" + table + ">";
 	}
+
 
 	@Override
 	public Schema apply(Schema originalSchema) throws SchemaSyncError {
@@ -71,6 +75,8 @@ public class TableAlter extends SchemaChange {
 		for (ColumnMod mod : columnMods) {
 			mod.apply(table);
 		}
+
+
 
 		if ( this.pks != null ) {
 			table.setPKList(this.pks);

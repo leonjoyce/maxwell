@@ -79,34 +79,46 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 
 		mapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
 
-		String jsonBuffer = null;
+		String buffer = null;
+		boolean bufferIsJSON = false;
 		while ( reader.ready() ) {
 			String line = reader.readLine();
 
-			if ( line.matches("^\\s*\\->\\s*\\{.*") ) {
-				line = line.replaceAll("^\\s*\\->\\s*", "");
-
-				if (line.matches("^.*\\}$")) {
-					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(line, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
-				} else {
-					jsonBuffer = line;
-				}
-			} else if ( jsonBuffer != null ) {
-				if (line.matches("^\\s+.*$")) {
-					jsonBuffer = jsonBuffer + line.trim();
-				} else {
-					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
-					jsonBuffer = null;
-				}
-			} else if ( line.matches("^\\s*$")) {
+			if (line.matches("^\\s*$")) { // skip blanks
 				continue;
-			} else {
-				ret.inputSQL.add(line);
+			}
+
+			if ( buffer != null ) {
+				if (line.matches("^\\s+.*$")) { // leading whitespace -- continuation of previous line
+					buffer = buffer + " " + line.trim();
+				} else {
+					if ( bufferIsJSON )	{
+						ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(buffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+					} else {
+						ret.inputSQL.add(buffer);
+					}
+					buffer = null;
+				}
+			}
+
+			if ( buffer == null ) {
+				if ( line.matches("^\\s*\\->\\s*\\{.*") ) {
+					line = line.replaceAll("^\\s*\\->\\s*", "");
+					bufferIsJSON = true;
+				} else {
+					bufferIsJSON = false;
+				}
+				buffer = line;
 			}
 		}
 
-		if ( jsonBuffer != null )
-			ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+		if ( buffer != null ) {
+			if ( bufferIsJSON )	{
+				ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(buffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+			} else {
+				ret.inputSQL.add(buffer);
+			}
+		}
 
 		reader.close();
 		return ret;
