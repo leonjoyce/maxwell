@@ -12,17 +12,19 @@ import com.zendesk.maxwell.schema.Table;
 public class TableAlter extends SchemaChange {
 	public String database;
 	public String table;
-	@JsonProperty("column_changes")
+	@JsonProperty("column-changes")
 	public ArrayList<ColumnMod> columnMods;
-	@JsonProperty("rename_database")
+	@JsonProperty("new-database")
 	public String newDatabase;
-	@JsonProperty("rename_table")
+	@JsonProperty("new-table")
 	public String newTableName;
 
+	@JsonProperty("convert-charset")
 	public String convertCharset;
+	@JsonProperty("charset")
 	public String defaultCharset;
 
-	@JsonProperty("primary_keys")
+	@JsonProperty("primary-keys")
 	public List<String> pks;
 
 	public TableAlter() {

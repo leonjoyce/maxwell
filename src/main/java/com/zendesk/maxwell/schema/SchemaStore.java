@@ -137,7 +137,7 @@ public class SchemaStore {
 					columnData.add(c.getName());
 
 					if ( c instanceof StringColumnDef ) {
-						columnData.add(((StringColumnDef) c).getEncoding());
+						columnData.add(((StringColumnDef) c).getCharset());
 					} else {
 						columnData.add(null);
 					}

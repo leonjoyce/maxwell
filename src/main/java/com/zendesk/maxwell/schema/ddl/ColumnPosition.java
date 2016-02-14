@@ -29,14 +29,14 @@ class ColumnPositionDeserializer extends JsonDeserializer<ColumnPosition> {
 		ColumnPosition p = new ColumnPosition();
 
 		try {
-			p.position = ColumnPosition.Position.valueOf(s.toUpperCase());
+			String[] fields = s.split(" ", 2);
+			p.position = ColumnPosition.Position.valueOf(fields[0].toUpperCase());
+
+			if ( p.position == ColumnPosition.Position.AFTER ) {
+				p.afterColumn = fields[1];
+			}
 		} catch ( IllegalArgumentException e ) {
 			return null;
-		}
-
-		if ( p.position == ColumnPosition.Position.AFTER ) {
-			String[] fields = s.split(" ", 2);
-			p.afterColumn = fields[1];
 		}
 
 		return p;

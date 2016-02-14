@@ -2,7 +2,6 @@ package com.zendesk.maxwell.schema.columndef;
 
 import java.nio.charset.Charset;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang.StringEscapeUtils;
@@ -13,22 +12,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class StringColumnDef extends ColumnDef {
-	protected String encoding;
+	protected String charset;
 
 	static final Logger LOGGER = LoggerFactory.getLogger(StringColumnDef.class);
 	public StringColumnDef () { }
-	public StringColumnDef(String name, String type, int pos, String encoding) {
+	public StringColumnDef(String name, String type, int pos, String charset) {
 		super(name, type, pos);
-		this.encoding = encoding;
+		this.charset = charset;
 	}
 
-	public String getEncoding() {
-		return encoding;
+	public String getCharset() {
+		return charset;
 	}
 
 	public void setDefaultEncoding(String e) {
-		if ( this.encoding == null )
-		  this.encoding = e;
+		if ( this.charset == null )
+		  this.charset = e;
 	}
 
 	@Override
@@ -42,7 +41,7 @@ public class StringColumnDef extends ColumnDef {
 	public String toSQL(Object value) {
 		byte[] b = (byte[]) value;
 
-		if ( encoding.equals("utf8") || encoding.equals("utf8mb4")) {
+		if ( charset.equals("utf8") || charset.equals("utf8mb4")) {
 			return quoteString(new String(b));
 		} else {
 			return "x'" +  Hex.encodeHexString( b ) + "'";
@@ -51,7 +50,7 @@ public class StringColumnDef extends ColumnDef {
 
 	// this could obviously be more complete.
 	private Charset charsetForEncoding() {
-		switch(encoding.toLowerCase()) {
+		switch(charset.toLowerCase()) {
 		case "utf8": case "utf8mb4":
 			return Charset.forName("UTF-8");
 		case "latin1": case "ascii":
@@ -59,7 +58,7 @@ public class StringColumnDef extends ColumnDef {
 		case "ucs2":
 			return Charset.forName("UTF-16");
 		default:
-			LOGGER.warn("warning: unhandled character set '" + encoding + "'");
+			LOGGER.warn("warning: unhandled character set '" + charset + "'");
 			return null;
 		}
 	}
@@ -71,7 +70,7 @@ public class StringColumnDef extends ColumnDef {
 		}
 
 		byte[] b = (byte[])value;
-		if ( encoding.equals("binary") ) {
+		if ( charset.equals("binary") ) {
 			return Base64.encodeBase64String(b);
 		} else {
 			return new String(b, charsetForEncoding());
@@ -80,7 +79,7 @@ public class StringColumnDef extends ColumnDef {
 
 	@Override
 	public ColumnDef copy() {
-		return new StringColumnDef(name, type, pos, encoding);
+		return new StringColumnDef(name, type, pos, charset);
 	}
 
 	private String quoteString(String s) {

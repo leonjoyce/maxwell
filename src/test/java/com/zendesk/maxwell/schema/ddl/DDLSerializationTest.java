@@ -57,4 +57,8 @@ public class DDLSerializationTest extends AbstractIntegrationTest {
 		TestDDLSerialization(getSQLDir() + "/serialization/create_table");
 	}
 
+	@Test
+	public void TestAlterTableSerialization() throws Exception {
+		TestDDLSerialization(getSQLDir() + "/serialization/alter_table");
+	}
 }

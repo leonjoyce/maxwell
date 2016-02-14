@@ -7,7 +7,6 @@ import org.apache.commons.lang.StringUtils;
 
 import com.zendesk.maxwell.schema.columndef.ColumnDef;
 import com.zendesk.maxwell.schema.columndef.StringColumnDef;
-import org.apache.commons.lang.enums.Enum;
 
 public class Table {
 	private final List<ColumnDef> columnList;
@@ -137,11 +136,11 @@ public class Table {
 					stringA = (StringColumnDef) column;
 					stringB = (StringColumnDef) other;
 
-					if ( !Objects.equals(stringA.getEncoding(), stringB.getEncoding()) ) {
-						diffs.add(colName + "has an encoding mismatch, "
-								+ "'" + stringA.getEncoding() + "'"
+					if ( !Objects.equals(stringA.getCharset(), stringB.getCharset()) ) {
+						diffs.add(colName + "has an charset mismatch, "
+								+ "'" + stringA.getCharset() + "'"
 								+ " vs "
-								+ "'" + stringB.getEncoding() + "'"
+								+ "'" + stringB.getCharset() + "'"
 								+ " in " + nameB);
 					}
 
@@ -156,7 +155,7 @@ public class Table {
 
 	public void diff(List<String> diffs, Table other, String nameA, String nameB) {
 		if ( !this.getEncoding().equals(other.getEncoding()) ) {
-			diffs.add(this.fullName() + " differs in encoding: "
+			diffs.add(this.fullName() + " differs in charset: "
 					  + nameA + " is " + this.getEncoding() + " but "
 					  + nameB + " is " + other.getEncoding());
 		}

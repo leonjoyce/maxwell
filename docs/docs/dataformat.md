@@ -7,7 +7,7 @@ Maxwell currently supports latin1 and utf-8 columns, and will convert both to UT
 ### blob (+ binary encoded strings)
 ***
 
-Maxell will base64 encode BLOB, BINARY and VARBINARY columns (as well as varchar/string columns with a BINARY encoding).
+Maxell will base64 encode BLOB, BINARY and VARBINARY columns (as well as varchar/string columns with a BINARY charset).
 
 
 ### datetime

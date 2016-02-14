@@ -92,11 +92,11 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 					jsonBuffer = line;
 				}
 			} else if ( jsonBuffer != null ) {
-				if (line.matches("^\\s*$")) {
+				if (line.matches("^\\s+.*$")) {
+					jsonBuffer = jsonBuffer + line.trim();
+				} else {
 					ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
 					jsonBuffer = null;
-				} else {
-					jsonBuffer = jsonBuffer + line.trim();
 				}
 			} else if ( line.matches("^\\s*$")) {
 				continue;
@@ -104,6 +104,10 @@ public class AbstractIntegrationTest extends AbstractMaxwellTest {
 				ret.inputSQL.add(line);
 			}
 		}
+
+		if ( jsonBuffer != null )
+			ret.jsonAsserts.add(mapper.<Map<String, Object>>readValue(jsonBuffer, MaxwellIntegrationTest.MAP_STRING_OBJECT_REF));
+
 		reader.close();
 		return ret;
 	}
