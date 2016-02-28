@@ -4,7 +4,7 @@ import com.zendesk.maxwell.producer.partitioners.PartitionKeyType;
 import java.io.IOException;
 
 public interface RowInterface {
-	public String pkToJson() throws IOException;
+	public String rowKey() throws IOException;
 	public String toJSON() throws IOException;
 	public boolean isTXCommit();
 	public BinlogPosition getPosition();

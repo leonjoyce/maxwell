@@ -68,7 +68,7 @@ public class RowMap implements Serializable, RowInterface {
 		this.pkColumns = pkColumns;
 	}
 
-	public String pkToJson() throws IOException {
+	public String rowKey() throws IOException {
 		JsonGenerator g = jsonGeneratorThreadLocal.get();
 
 		g.writeStartObject(); // start of row {
