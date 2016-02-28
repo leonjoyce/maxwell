@@ -148,8 +148,9 @@ public class AbstractMaxwellTest {
 
 		AbstractProducer producer = new AbstractProducer(context) {
 			@Override
-			public void push(RowMap r) {
-				list.add(r);
+			public void push(RowInterface r) {
+				if ( r instanceof RowMap )
+					list.add((RowMap) r);
 			}
 		};
 
