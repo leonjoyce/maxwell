@@ -24,6 +24,8 @@ import com.zendesk.maxwell.schema.Table;
 import com.zendesk.maxwell.schema.ddl.SchemaChange;
 import com.zendesk.maxwell.schema.ddl.ResolvedSchemaChange;
 import com.zendesk.maxwell.schema.ddl.SchemaSyncError;
+import com.zendesk.maxwell.schema.ddl.DDLRow;
+import com.zendesk.maxwell.util.ListWithDiskBuffer;
 
 public class MaxwellReplicator extends RunLoopProcess {
 	private final long MAX_TX_ELEMENTS = 10000;
@@ -251,9 +253,9 @@ public class MaxwellReplicator extends RunLoopProcess {
 		}
 	}
 
-	private RowMapBuffer rowBuffer;
+	private ListWithDiskBuffer<RowInterface> rowBuffer;
 
-	public RowMap getRow() throws Exception {
+	public RowInterface getRow() throws Exception {
 		BinlogEventV4 v4Event;
 
 		while (true) {
@@ -288,7 +290,7 @@ public class MaxwellReplicator extends RunLoopProcess {
 					if (qe.getSql().toString().equals("BEGIN"))
 						rowBuffer = getTransactionRows();
 					else
-						processQueryEvent((QueryEvent) v4Event);
+						rowBuffer = processQueryEvent((QueryEvent) v4Event);
 					break;
 				default:
 					break;
@@ -303,7 +305,7 @@ public class MaxwellReplicator extends RunLoopProcess {
 	}
 
 
-	private void processQueryEvent(QueryEvent event) throws SchemaSyncError, SQLException, IOException {
+	private ListWithDiskBuffer<DDLRow> processQueryEvent(QueryEvent event) throws SchemaSyncError, SQLException, IOException {
 		// get charset of the alter event somehow? or just ignore it.
 		String dbName = event.getDatabaseName().toString();
 		String sql = event.getSql().toString();
@@ -313,13 +315,21 @@ public class MaxwellReplicator extends RunLoopProcess {
 		if ( changes == null )
 			return;
 
+		ListWithDiskBuffer<DDLRow> buffer = new ListWithDiskBuffer<>(2000);
 		Schema updatedSchema = this.schema;
 
 		for ( SchemaChange change : changes ) {
 			if ( !change.isBlacklisted(this.filter) ) {
 				ResolvedSchemaChange resolved = change.resolve(updatedSchema);
-				if ( resolved != null )
+				if ( resolved != null ) {
 					updatedSchema = resolved.apply(updatedSchema);
+
+					DDLRow r = new DDLRow(resolved,
+										  event.getTimestamp(),
+										  new BinlogPosition(event.getHeader().getPosition(), event.getHeader().getBinlogFileName()));
+					buffer.add(r);
+
+				}
 			} else {
 				LOGGER.debug("ignoring blacklisted schema change");
 			}
@@ -331,6 +341,7 @@ public class MaxwellReplicator extends RunLoopProcess {
 
 			saveSchema(updatedSchema, p);
 		}
+		return buffer;
 	}
 
 	private void saveSchema(Schema updatedSchema, BinlogPosition p) throws SQLException {
