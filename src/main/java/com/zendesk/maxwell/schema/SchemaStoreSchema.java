@@ -38,7 +38,6 @@ public class SchemaStoreSchema {
 		BufferedReader r = new BufferedReader(new InputStreamReader(schemaSQL));
 		String sql = "", line;
 
-		LOGGER.info("Creating maxwell database");
 		connection.createStatement().execute("CREATE DATABASE IF NOT EXISTS `" + schemaDatabaseName + "`");
 		if (!connection.getCatalog().equals(schemaDatabaseName))
 			connection.setCatalog(schemaDatabaseName);
@@ -54,6 +53,7 @@ public class SchemaStoreSchema {
 	}
 
 	private static void createStoreDatabase(Connection connection, String schemaDatabaseName) throws SQLException, IOException {
+		LOGGER.info("Creating '" + schemaDatabaseName + "' database to store schema information");
 		executeSQLInputStream(connection, SchemaStoreSchema.class.getResourceAsStream("/sql/maxwell_schema.sql"), schemaDatabaseName);
 		executeSQLInputStream(connection, SchemaStoreSchema.class.getResourceAsStream("/sql/maxwell_schema_bootstrap.sql"), schemaDatabaseName);
 	}
