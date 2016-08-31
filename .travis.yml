@@ -5,4 +5,4 @@ env:
 install: true
 script:
   - make test
-  - "cat test.log | awk '/begin-test/ { PRINT=1 } /end-test/ { PRINT=0 } { if (PRINT == 1)  print $0  } '"
+  - "cat test.log | awk '/begin-test/ { PRINT=1 } /end-test/ { PRINT=0 } { if (PRINT == 1)  print $0  } | grep -v TransportImpl'"
