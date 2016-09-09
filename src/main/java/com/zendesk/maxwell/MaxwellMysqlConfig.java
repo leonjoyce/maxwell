@@ -1,6 +1,8 @@
 package com.zendesk.maxwell;
 
 import java.util.ArrayList;
+import java.util.Objects;
+
 import org.apache.commons.lang3.StringUtils;
 
 import joptsimple.OptionSet;
@@ -58,9 +60,9 @@ public class MaxwellMysqlConfig {
 	public boolean equals(Object obj) {
 		if (obj.getClass() != this.getClass() ) return false;
 		MaxwellMysqlConfig other = ((MaxwellMysqlConfig) obj);
-		return (this.host == other.host
-				&& this.password == other.password
-				&& this.port == other.port
-				&& this.user == other.user);
+		return Objects.equals(this.host, other.host)
+			&&  Objects.equals(password, other.password)
+			&&  Objects.equals(port, other.port)
+			&&  Objects.equals(user, other.user);
 	}
 }

@@ -364,6 +364,11 @@ public class MaxwellConfig extends AbstractConfig {
 		} catch (MaxwellInvalidFilterException e) {
 			usage("Invalid filter options: " + e.getLocalizedMessage());
 		}
+
+		if ( this.masterRecovery && !this.maxwellMysql.equals(this.replicationMysql) ) {
+			LOGGER.warn("disabling master recovery; not available when using a separate replication host.");
+			this.masterRecovery = false;
+		}
 	}
 
 	public Properties getKafkaProperties() {
