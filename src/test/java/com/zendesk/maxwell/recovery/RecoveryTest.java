@@ -149,6 +149,13 @@ public class RecoveryTest extends TestWithNameLogging {
 			}
 		}
 		assertEquals(true, foundSchema);
+
+
+		// assert that we deleted the old position
+		rs = slaveServer.getConnection().createStatement().executeQuery("select count(*) as count from maxwell.positions");
+		rs.next();
+		assertEquals(1, rs.getInt(1));
+
 		maxwell.terminate();
 	}
 

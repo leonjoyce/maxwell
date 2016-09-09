@@ -84,6 +84,9 @@ public class Maxwell implements Runnable {
 				);
 
 				oldServerSchemaStore.clone(context.getServerID(), recovered);
+
+				// now delete the position of the old server_id.
+				this.context.getPositionStore().deletePosition(recoveryInfo.serverID, recoveryInfo.position);
 			}
 		}
 		return recovered;
