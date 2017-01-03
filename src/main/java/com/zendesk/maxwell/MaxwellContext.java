@@ -177,6 +177,11 @@ public class MaxwellContext {
 		}
 	}
 
+	public boolean forceShykoMode() throws SQLException {
+		fetchMysqlVersion();
+		return mysqlMajorVersion >= 5 && mysqlMinorVersion >= 7;
+	}
+
 	public boolean shouldHeartbeat() throws SQLException {
 		fetchMysqlVersion();
 		return mysqlMajorVersion >= 5 && mysqlMinorVersion >= 5;

@@ -164,6 +164,11 @@ public class Maxwell implements Runnable {
 		MysqlSchemaStore mysqlSchemaStore = new MysqlSchemaStore(this.context, initPosition);
 		mysqlSchemaStore.getSchema(); // trigger schema to load / capture before we start the replicator.
 
+		if ( this.context.forceShykoMode() ) {
+			LOGGER.warn("detected mysql 5.7 server, switching to binlog-connector library (alpha!)");
+			this.config.shykoMode = true;
+		}
+
 		if ( this.config.shykoMode )
 			this.replicator = new BinlogConnectorReplicator(mysqlSchemaStore, producer, bootstrapper, this.context, initPosition);
 		else
