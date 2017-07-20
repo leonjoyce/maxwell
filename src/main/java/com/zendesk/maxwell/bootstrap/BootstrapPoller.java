@@ -8,7 +8,6 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeoutException;
 
 import org.slf4j.Logger;
@@ -18,9 +17,11 @@ import com.zendesk.maxwell.MaxwellContext;
 import com.zendesk.maxwell.row.BootstrapRowMap;
 import com.zendesk.maxwell.util.StoppableTask;
 import com.zendesk.maxwell.util.StoppableTaskState;
+import snaq.db.ConnectionPool;
 
 public class BootstrapPoller implements StoppableTask {
 	static final Logger LOGGER = LoggerFactory.getLogger(BootstrapPoller.class);
+	private final AbstractBootstrapper bootstrapper;
 
 	protected Connection schemaConnection;
 	protected volatile StoppableTaskState taskState;
@@ -29,7 +30,6 @@ public class BootstrapPoller implements StoppableTask {
 	private MaxwellContext context = null;
 	private String schemaDatabase = null;
 	private Thread bootstrapPollerThread = null;
-	private final LinkedBlockingDeque<BootstrapRowMap> queue;
 	private Map<Integer, BootstrapEntry> allentry = new HashMap<Integer, BootstrapEntry>();
 
 	public static class BootstrapEntry {
@@ -45,15 +45,21 @@ public class BootstrapPoller implements StoppableTask {
 		public Timestamp completed_at;
 		public String binlog_file;
 		public int binlog_position;
+
+		public boolean isUnstarted() {
+			return started_at == null && !complete;
+		}
 	}
 
-	public BootstrapPoller(LinkedBlockingDeque<BootstrapRowMap> queue, MaxwellContext context) {
-		this.queue = queue;
-		this.context = context;
-		this.schemaDatabase = context.getConfig().databaseName;
+	public BootstrapPoller(
+		AbstractBootstrapper bootstrapper,
+		long pollInterval,
+		ConnectionPool controlConnectionPoool
+	) {
+		this.bootstrapper = bootstrapper;
+		this.pollInterval = pollInterval;
 		this.sql = "select * from bootstrap;";
 		this.taskState = new StoppableTaskState(this.getClass().getName());
-		this.pollInterval = context.getConfig().bootstrapPollerInterval;
 	}
 
 	protected void ensureBootstrapPoller() {
@@ -130,7 +136,8 @@ public class BootstrapPoller implements StoppableTask {
 
 	private void checkEntry(BootstrapEntry entry) throws IOException, SQLException {
 		BootstrapEntry old = allentry.get(entry.id);
-		if (old == null && entry.started_at == null && entry.complete == false) {
+		if (old == null && entry.isUnstarted() ) {
+			bootstrapper.startBootstrap();
 			// new inserted row
 			BootstrapRowMap row = new BootstrapRowMap("insert", this.schemaDatabase, entry, context.getPosition());
 			LOGGER.debug(String.format("found a new bootstrapping row %s", row.toJSON()));
