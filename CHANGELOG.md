@@ -1,7 +1,56 @@
 # Maxwell changelog
 
-### [v1.10.0](https://github.com/zendesk/maxwell/releases/tag/v1.10.0): "slightly more ones than zeoes"
+### [v1.10.5](https://github.com/zendesk/maxwell/releases/tag/v1.10.5): "half asleep on her couch"
 
+
+- Shyko's binlog-connector is now the default and only replication
+backend available for maxwell.
+
+
+### [v1.10.4](https://github.com/zendesk/maxwell/releases/tag/v1.10.4): "shutdown --harder"
+
+
+Notable changes:
+
+ - Shutdown hardening. If maxwell can't shut down (because the kafka
+   producer is in a bad state and `close()` never terminates, for example),
+   it would previously stall and process no messages. Now, shutdown is run
+   in a separate thread and there is an additional watchdog thread which
+   forcibly kills the maxwell process if it can't shut down within 10
+   seconds.
+ - Initial support for running maxwell from java, rather then as its own
+   process. This mode of operation is still experimental, but we'll
+   accept PRs to improve it (thanks Geoff Lywood).
+ - Fix incorrect handling of negative (pre-epoch dates) when using
+   binlog_connector mode (thanks Geoff Lywood).
+
+
+### [v1.10.3](https://github.com/zendesk/maxwell/releases/tag/v1.10.3): "1.10.2-and-a-bit"
+
+
+ - tiny release to fix a units error in the `replication.lag` metric
+   (subtracting seconds from milliseconds)
+
+
+### [v1.10.2](https://github.com/zendesk/maxwell/releases/tag/v1.10.2): "just in time for tomorrow"
+
+
+- added metrics: "replication.queue.time" and "inflightmessages.count"
+- renamed "time.overall" metric to "message.publish.time"
+- documentation updates (thanks Chintan Tank)
+
+
+### [v1.10.1](https://github.com/zendesk/maxwell/releases/tag/v1.10.1): "forgive and forget"
+
+The observable changes in this minor release are a new configuration for Kafka/Kinesis producer to abort processing on publish errors, and support of Kafka 0.10.2. Also a bunch of good refactoring has been done for heartbeat processing. List of changes:   
+
+- Support Kafka 0.10.2   
+- Stop procesing RDS hearbeats   
+- Keep maxwell heartbeat going every 10 seconds when database is quiet   
+- Allow for empty double-quoted string literals for database schema changes   
+- Ignore Kafka/Kinesis producer errors based on new configuration ignore_producer_error
+
+### [v1.10.0](https://github.com/zendesk/maxwell/releases/tag/v1.10.0): "slightly more ones than zeroes"
 
 This is a small release, primarily around a change to how schemas are
 stored. Maxwell now stores the `last_heartbeat_read` with each entry

@@ -5,14 +5,17 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.zendesk.maxwell.replication.BinlogPosition;
+import com.zendesk.maxwell.metrics.MaxwellMetrics;
 import com.zendesk.maxwell.bootstrap.AbstractBootstrapper;
 import com.zendesk.maxwell.bootstrap.AsynchronousBootstrapper;
 import com.zendesk.maxwell.bootstrap.NoOpBootstrapper;
 import com.zendesk.maxwell.bootstrap.SynchronousBootstrapper;
+import com.zendesk.maxwell.metrics.Metrics;
 import com.zendesk.maxwell.producer.*;
 import com.zendesk.maxwell.recovery.RecoveryInfo;
+import com.zendesk.maxwell.replication.MysqlVersion;
 import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.replication.Replicator;
 import com.zendesk.maxwell.row.RowMap;
@@ -34,6 +37,7 @@ public class MaxwellContext {
 	private final ConnectionPool rawMaxwellConnectionPool;
 	private final ConnectionPool schemaConnectionPool;
 	private final MaxwellConfig config;
+	private final MaxwellMetrics metrics;
 	private MysqlPositionStore positionStore;
 	private PositionStoreThread positionStoreThread;
 	private Long serverID;
@@ -43,13 +47,14 @@ public class MaxwellContext {
 	private TaskManager taskManager;
 	private volatile Exception error;
 
-	private Integer mysqlMajorVersion;
-	private Integer mysqlMinorVersion;
+	private MysqlVersion mysqlVersion;
 	private Replicator replicator;
+	private Thread terminationThread;
 
 	public MaxwellContext(MaxwellConfig config) throws SQLException {
 		this.config = config;
 		this.taskManager = new TaskManager();
+		this.metrics = new MaxwellMetrics(config);
 
 		this.replicationConnectionPool = new ConnectionPool("ReplicationConnectionPool", 10, 0, 10,
 				config.replicationMysql.getConnectionURI(false), config.replicationMysql.user, config.replicationMysql.password);
@@ -110,51 +115,106 @@ public class MaxwellContext {
 		return rawMaxwellConnectionPool.getConnection();
 	}
 
-	public void start() {
+	public void start() throws IOException {
+		metrics.startBackgroundTasks(this);
 		getPositionStoreThread(); // boot up thread explicitly.
 	}
 
-	public void heartbeat() throws Exception {
-		this.positionStore.heartbeat();
+	public long heartbeat() throws Exception {
+		return this.positionStore.heartbeat();
 	}
 
 	public void addTask(StoppableTask task) {
 		this.taskManager.add(task);
 	}
 
-	public void terminate() {
-		terminate(null);
+	public Thread terminate() {
+		return terminate(null);
 	}
 
-	public void terminate(Exception error) {
+	private void sendFinalHeartbeat() {
+		long heartbeat = System.currentTimeMillis();
+		LOGGER.info("Sending final heartbeat: " + heartbeat);
+		try {
+			this.replicator.stopAtHeartbeat(heartbeat);
+			this.positionStore.heartbeat(heartbeat);
+			long deadline = heartbeat + 5000L;
+			while (positionStoreThread.getPosition().getLastHeartbeatRead() < heartbeat) {
+				if (System.currentTimeMillis() > deadline) {
+					LOGGER.warn("Timed out waiting for heartbeat " + heartbeat);
+					break;
+				}
+				Thread.sleep(100);
+			}
+		} catch (Exception e) {
+			LOGGER.error("Failed to send final heartbeat", e);
+		}
+	}
+
+	private void shutdown(AtomicBoolean complete) {
+		try {
+			taskManager.stop(this.error);
+			this.replicationConnectionPool.release();
+			this.maxwellConnectionPool.release();
+			this.rawMaxwellConnectionPool.release();
+			complete.set(true);
+		} catch (Exception e) {
+			LOGGER.error("Exception occurred during shutdown:", e);
+		}
+	}
+
+	private Thread spawnTerminateThread() {
+		// Because terminate() may be called from a task thread
+		// which won't end until we let its event loop progress,
+		// we need to perform termination in a new thread
+		final AtomicBoolean shutdownComplete = new AtomicBoolean(false);
+		final MaxwellContext self = this;
+		Thread thread = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				// Spawn an inner thread to perform shutdown
+				final Thread shutdownThread = new Thread(new Runnable() {
+					@Override
+					public void run() {
+						self.shutdown(shutdownComplete);
+					}
+				}, "shutdownThread");
+				shutdownThread.start();
+
+				// wait for its completion, timing out after 10s
+				try {
+					shutdownThread.join(10000L);
+				} catch (InterruptedException e) {
+					// ignore
+				}
+
+				LOGGER.debug("Shutdown complete: " + shutdownComplete.get());
+				if (!shutdownComplete.get()) {
+					LOGGER.error("Shutdown stalled - forcefully killing maxwell process");
+					if (self.error != null) {
+						LOGGER.error("Termination reason:", self.error);
+					}
+					Runtime.getRuntime().halt(1);
+				}
+			}
+		}, "shutdownMonitor");
+		thread.setDaemon(false);
+		thread.start();
+		return thread;
+	}
+
+	public Thread terminate(Exception error) {
 		if (this.error == null) {
 			this.error = error;
 		}
 
 		if (taskManager.requestStop()) {
 			if (this.error == null && this.replicator != null) {
-				long heartbeat = System.currentTimeMillis();
-				LOGGER.info("sending final heartbeat: " + heartbeat);
-				try {
-					this.replicator.stopAtHeartbeat(heartbeat);
-					this.positionStore.heartbeat(heartbeat);
-					long deadline = heartbeat + 10000L;
-					while (positionStoreThread.getPosition().getLastHeartbeatRead() < heartbeat) {
-						if (System.currentTimeMillis() > deadline) {
-							LOGGER.warn("timed out waiting for heartbeat " + heartbeat);
-							break;
-						}
-						Thread.sleep(100);
-					}
-				} catch (Exception e) {
-					LOGGER.error("failed graceful shutdown", e);
-				}
+				sendFinalHeartbeat();
 			}
-			taskManager.stop(this.error);
-			this.replicationConnectionPool.release();
-			this.maxwellConnectionPool.release();
-			this.rawMaxwellConnectionPool.release();
+			this.terminationThread = spawnTerminateThread();
 		}
+		return this.terminationThread;
 	}
 
 	public Exception getError() {
@@ -214,21 +274,17 @@ public class MaxwellContext {
 		}
 	}
 
-
-	private void fetchMysqlVersion() throws SQLException {
-		if ( mysqlMajorVersion == null ) {
+	public MysqlVersion getMysqlVersion() throws SQLException {
+		if ( mysqlVersion == null ) {
 			try ( Connection c = getReplicationConnection() ) {
-				DatabaseMetaData meta = c.getMetaData();
-				mysqlMajorVersion = meta.getDatabaseMajorVersion();
-				mysqlMinorVersion = meta.getDatabaseMinorVersion();
+				mysqlVersion = MysqlVersion.capture(c);
 			}
 		}
+		return mysqlVersion;
 	}
 
 	public boolean shouldHeartbeat() throws SQLException {
-		fetchMysqlVersion();
-		// 5.5 and above
-		return (mysqlMajorVersion >= 6) || (mysqlMajorVersion == 5 && mysqlMinorVersion >= 5);
+		return getMysqlVersion().atLeast(5,5);
 	}
 
 	public CaseSensitivity getCaseSensitivity() throws SQLException {
@@ -262,30 +318,34 @@ public class MaxwellContext {
 		if ( this.producer != null )
 			return this.producer;
 
-		switch ( this.config.producerType ) {
-		case "file":
-			this.producer = new FileProducer(this, this.config.outputFile);
-			break;
-		case "kafka":
-			this.producer = new MaxwellKafkaProducer(this, this.config.getKafkaProperties(), this.config.kafkaTopic);
-			break;
-		case "kinesis":
-			this.producer = new MaxwellKinesisProducer(this, this.config.kinesisStream);
-			break;
-		case "profiler":
-			this.producer = new ProfilerProducer(this);
-			break;
-		case "stdout":
-			this.producer = new StdoutProducer(this);
-			break;
-		case "buffer":
-			this.producer = new BufferedProducer(this, this.config.bufferedProducerSize);
-			break;
-		case "none":
-			this.producer = null;
-			break;
-		default:
-			throw new RuntimeException("Unknown producer type: " + this.config.producerType);
+		if ( this.config.producerFactory != null ) {
+			this.producer = this.config.producerFactory.createProducer(this);
+		} else {
+			switch ( this.config.producerType ) {
+			case "file":
+				this.producer = new FileProducer(this, this.config.outputFile);
+				break;
+			case "kafka":
+				this.producer = new MaxwellKafkaProducer(this, this.config.getKafkaProperties(), this.config.kafkaTopic);
+				break;
+			case "kinesis":
+				this.producer = new MaxwellKinesisProducer(this, this.config.kinesisStream);
+				break;
+			case "profiler":
+				this.producer = new ProfilerProducer(this);
+				break;
+			case "stdout":
+				this.producer = new StdoutProducer(this);
+				break;
+			case "buffer":
+				this.producer = new BufferedProducer(this, this.config.bufferedProducerSize);
+				break;
+			case "none":
+				this.producer = null;
+				break;
+			default:
+				throw new RuntimeException("Unknown producer type: " + this.config.producerType);
+			}
 		}
 
 		StoppableTask task = null;
@@ -337,5 +397,9 @@ public class MaxwellContext {
 	public void setReplicator(Replicator replicator) {
 		this.addTask(replicator);
 		this.replicator = replicator;
+	}
+
+	public Metrics getMetrics() {
+		return metrics;
 	}
 }

@@ -2,7 +2,6 @@ package com.zendesk.maxwell;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zendesk.maxwell.producer.MaxwellOutputConfig;
-import com.zendesk.maxwell.replication.BinlogPosition;
 import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.schema.Schema;
@@ -66,10 +65,10 @@ public class MaxwellTestSupport {
 		}
 
 		String shardedFileName;
-		if ( server.getVersion().equals("5.6") )
-			shardedFileName = "sharded_56.sql";
-		else
+		if ( server.getVersion().atLeast(server.VERSION_5_6) )
 			shardedFileName = "sharded.sql";
+		else
+			shardedFileName = "sharded_55.sql";
 
 		File shardedFile = new File(getSQLDir() + "/schema/" + shardedFileName);
 		byte[] sql = Files.readAllBytes(shardedFile.toPath());
@@ -180,11 +179,22 @@ public class MaxwellTestSupport {
 
 		config.initPosition = capture(mysql.getConnection());
 		final String waitObject = new String("");
-		BufferedMaxwell maxwell = new BufferedMaxwell(config) {
+		final BufferedMaxwell maxwell = new BufferedMaxwell(config) {
 			@Override
 			protected void onReplicatorStart() {
 				synchronized(waitObject) {
 					waitObject.notify();
+				}
+			}
+
+			@Override
+			public void run() {
+				try {
+					super.run();
+				} finally {
+					synchronized(waitObject) {
+						waitObject.notify();
+					}
 				}
 			}
 		};
@@ -193,11 +203,15 @@ public class MaxwellTestSupport {
 
 		synchronized(waitObject) { waitObject.wait(); }
 
-		callback.afterReplicatorStart(mysql);
-		maxwell.context.getPositionStore().heartbeat();
+		Exception maxwellError = maxwell.context.getError();
+		if (maxwellError != null) {
+			throw maxwell.context.getError();
+		}
 
-		Position finalPosition = capture(mysql.getConnection());
-		LOGGER.debug("running replicator up to " + finalPosition);
+		callback.afterReplicatorStart(mysql);
+		long finalHeartbeat = maxwell.context.getPositionStore().heartbeat();
+
+		LOGGER.debug("running replicator up to heartbeat: " + finalHeartbeat);
 
 		Long pollTime = 2000L;
 		Position lastPositionRead = null;
@@ -213,7 +227,7 @@ public class MaxwellTestSupport {
 
 			lastPositionRead = row.getPosition();
 
-			if ( row.getPosition().newerThan(finalPosition) ) {
+			if ( lastPositionRead.getLastHeartbeatRead() >= finalHeartbeat ) {
 				// consume whatever's left over in the buffer.
 				for ( ;; ) {
 					RowMap r = maxwell.poll(pollTime);
@@ -232,7 +246,8 @@ public class MaxwellTestSupport {
 
 		callback.beforeTerminate(mysql);
 		maxwell.terminate();
-		Exception maxwellError = maxwell.context.getError();
+
+		maxwellError = maxwell.context.getError();
 		if (maxwellError != null) {
 			throw maxwellError;
 		}

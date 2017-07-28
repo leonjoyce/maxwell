@@ -8,6 +8,8 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Timer;
 import com.github.shyiko.mysql.binlog.BinaryLogClient;
 import com.github.shyiko.mysql.binlog.event.Event;
 import com.github.shyiko.mysql.binlog.event.QueryEventData;
@@ -16,6 +18,8 @@ import com.github.shyiko.mysql.binlog.event.deserialization.EventDeserializer;
 import com.zendesk.maxwell.MaxwellContext;
 import com.zendesk.maxwell.MaxwellMysqlConfig;
 import com.zendesk.maxwell.bootstrap.AbstractBootstrapper;
+import com.zendesk.maxwell.metrics.MaxwellMetrics;
+import com.zendesk.maxwell.metrics.Metrics;
 import com.zendesk.maxwell.producer.AbstractProducer;
 import com.zendesk.maxwell.row.BootstrapRowMap;
 import com.zendesk.maxwell.row.RowMap;
@@ -46,11 +50,12 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 		MaxwellMysqlConfig mysqlConfig,
 		Long replicaServerID,
 		String maxwellSchemaDatabaseName,
+		Metrics metrics,
 		Position start,
 		boolean stopOnEOF,
 		String clientID
 	) {
-		super(clientID, bootstrapper, maxwellSchemaDatabaseName, producer, start);
+		super(clientID, bootstrapper, maxwellSchemaDatabaseName, producer, metrics, start);
 		this.schemaStore = schemaStore;
 
 		this.client = new BinaryLogClient(mysqlConfig.host, mysqlConfig.port, mysqlConfig.user, mysqlConfig.password);
@@ -70,7 +75,9 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 			EventDeserializer.CompatibilityMode.CHAR_AND_BINARY_AS_BYTE_ARRAY);
 		this.client.setEventDeserializer(eventDeserializer);
 
-		this.binlogEventListener = new BinlogConnectorEventListener(client, queue);
+		Timer replicationQueueTimer = metrics.getRegistry().timer(metrics.metricName("replication", "queue", "time"));
+		this.binlogEventListener = new BinlogConnectorEventListener(client, queue, replicationQueueTimer);
+
 		this.client.setBlocking(!stopOnEOF);
 		this.client.registerEventListener(binlogEventListener);
 		this.client.setServerId(replicaServerID.intValue());
@@ -86,6 +93,7 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 			ctx.getConfig().replicationMysql,
 			ctx.getConfig().replicaServerID,
 			ctx.getConfig().databaseName,
+			ctx.getMetrics(),
 			start,
 			false,
 			ctx.getConfig().clientID
@@ -192,9 +200,6 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 					break;
 				case XID:
 					buffer.setXid(event.xidData().getXid());
-
-					// feed metric gauge.
-					replicationLag = System.currentTimeMillis() - event.getEvent().getHeader().getTimestamp();
 
 					if ( !buffer.isEmpty() )
 						buffer.getLast().setTXCommit();
@@ -310,15 +315,11 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 			data.getSql(),
 			this.schemaStore,
 			lastHeartbeatPosition.withBinlogPosition(event.getPosition()),
-			event.getEvent().getHeader().getTimestamp() / 1000
+			event.getEvent().getHeader().getTimestamp()
 		);
 	}
 
 	public Schema getSchema() throws SchemaStoreException {
 		return this.schemaStore.getSchema();
-	}
-
-	public Long getReplicationLag() {
-		return this.replicationLag;
 	}
 }

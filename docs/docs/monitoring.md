@@ -19,17 +19,19 @@ metric                         | description
 `row.meter`                    | a measure of the rate at which rows arrive to Maxwell from the binlog connector
 **Gauges**
 `replication.lag`              | the time elapsed between the database transaction commit and the time it was processed by Maxwell, in milliseconds
+`inflightmessages.count`       | the number of messages that are currently in-flight (awaiting acknowledgement from the destination, or ahead of messages which are)
 **Timers**
-`time.overall`                 | the time it took to send a given record to Kafka, in milliseconds
+`message.publish.time`         | the time it took to send a given record to Kafka, in milliseconds
+`replication.queue.time`       | the time it took to enqueue a given binlog event for processing, in milliseconds
 
 ### HTTP Endpoints
 When the HTTP server is enabled the following endpoints are exposed:
 
-endpoint                       | description
--------------------------------|-------------
-`/metrics`                     | return all metrics as JSON
-`/healthcheck`                 | run Maxwell's healthcheck(s) and return success or failure based on the result
-`/ping`                        | a simple ping test, responds with `pong`
+| endpoint       | description                                                                    |
+|:---------------|:-------------------------------------------------------------------------------|
+| `/metrics`     | return all metrics as JSON                                                     |
+| `/healthcheck` | run Maxwell's healthcheck(s) and return success or failure based on the result |
+| `/ping`        | a simple ping test, responds with `pong`                                       |
 
 ### Healthcheck
 The `/healthcheck` endpoint will return unhealthy when there is more than 1 message that failed to be sent to Kafka in the past 15 minutes.
@@ -49,12 +51,3 @@ export JAVA_OPTS="-Dcom.sun.management.jmxremote \
 -Dcom.sun.management.jmxremote.ssl=false \
 -Djava.rmi.server.hostname=SERVER_IP_ADDRESS"
 ```
-
-
-
-<script>
-  jQuery(document).ready(function () {
-    jQuery("table").addClass("table table-condensed table-bordered table-hover");
-  });
-</script>
-

@@ -1,9 +1,10 @@
 package com.zendesk.maxwell.recovery;
 
 import com.zendesk.maxwell.*;
+import com.zendesk.maxwell.metrics.Metrics;
+import com.zendesk.maxwell.metrics.NoOpMetrics;
 import com.zendesk.maxwell.replication.BinlogConnectorReplicator;
 import com.zendesk.maxwell.replication.BinlogPosition;
-import com.zendesk.maxwell.replication.MaxwellReplicator;
 import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.replication.Replicator;
 import com.zendesk.maxwell.row.HeartbeatRowMap;
@@ -27,20 +28,17 @@ public class Recovery {
 	private final MaxwellMysqlConfig replicationConfig;
 	private final String maxwellDatabaseName;
 	private final RecoverySchemaStore schemaStore;
-	private final boolean shykoMode;
 
 	public Recovery(MaxwellMysqlConfig replicationConfig,
 					String maxwellDatabaseName,
 					ConnectionPool replicationConnectionPool,
 					CaseSensitivity caseSensitivity,
-					RecoveryInfo recoveryInfo,
-					boolean shykoMode) {
+					RecoveryInfo recoveryInfo) {
 		this.replicationConfig = replicationConfig;
 		this.replicationConnectionPool = replicationConnectionPool;
 		this.recoveryInfo = recoveryInfo;
 		this.schemaStore = new RecoverySchemaStore(replicationConnectionPool, maxwellDatabaseName, caseSensitivity);
 		this.maxwellDatabaseName = maxwellDatabaseName;
-		this.shykoMode = shykoMode;
 	}
 
 	public Position recover() throws Exception {
@@ -51,40 +49,25 @@ public class Recovery {
 		);
 
 		LOGGER.warn("attempting to recover from master-change: " + recoveryMsg);
-
 		List<BinlogPosition> list = getBinlogInfo();
 		for ( int i = list.size() - 1; i >= 0 ; i-- ) {
 			BinlogPosition binlogPosition = list.get(i);
 			Position position = recoveryInfo.position.withBinlogPosition(binlogPosition);
+			Metrics metrics = new NoOpMetrics();
 
 			LOGGER.debug("scanning binlog: " + binlogPosition);
-			Replicator replicator;
-			if ( shykoMode ) {
-				replicator = new BinlogConnectorReplicator(
-						this.schemaStore,
-						null,
-						null,
-						replicationConfig,
-						0L, // server-id of 0 activates "mysqlbinlog" behavior where the server will stop after each binlog
-						maxwellDatabaseName,
-						position,
-						true,
-						recoveryInfo.clientID
-						);
-			} else {
-				replicator = new MaxwellReplicator(
-						this.schemaStore,
-						null,
-						null,
-						replicationConfig,
-						0L, // server-id of 0 activates "mysqlbinlog" behavior where the server will stop after each binlog
-						false,
-						maxwellDatabaseName,
-						position,
-						true,
-						recoveryInfo.clientID
-						);
-			}
+			Replicator replicator = new BinlogConnectorReplicator(
+					this.schemaStore,
+					null,
+					null,
+					replicationConfig,
+					0L, // server-id of 0 activates "mysqlbinlog" behavior where the server will stop after each binlog
+					maxwellDatabaseName,
+					metrics,
+					position,
+					true,
+					recoveryInfo.clientID
+			);
 
 			replicator.setFilter(new RecoveryFilter(this.maxwellDatabaseName));
 

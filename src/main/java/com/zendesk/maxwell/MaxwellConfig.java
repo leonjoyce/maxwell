@@ -1,18 +1,26 @@
 package com.zendesk.maxwell;
 
-import java.util.*;
-import java.util.regex.Pattern;
-
-import com.zendesk.maxwell.replication.BinlogPosition;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.health.HealthCheckRegistry;
+import com.zendesk.maxwell.metrics.Metrics;
+import com.zendesk.maxwell.producer.AbstractProducer;
 import com.zendesk.maxwell.producer.MaxwellOutputConfig;
+import com.zendesk.maxwell.producer.ProducerFactory;
+import com.zendesk.maxwell.replication.BinlogPosition;
 import com.zendesk.maxwell.replication.Position;
-import joptsimple.*;
-
+import com.zendesk.maxwell.util.AbstractConfig;
+import joptsimple.BuiltinHelpFormatter;
+import joptsimple.OptionDescriptor;
+import joptsimple.OptionParser;
+import joptsimple.OptionSet;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.zendesk.maxwell.util.AbstractConfig;
+import java.util.Enumeration;
+import java.util.Map;
+import java.util.Properties;
+import java.util.regex.Pattern;
 
 public class MaxwellConfig extends AbstractConfig {
 	static final Logger LOGGER = LoggerFactory.getLogger(MaxwellConfig.class);
@@ -24,18 +32,19 @@ public class MaxwellConfig extends AbstractConfig {
 
 	public MaxwellMysqlConfig maxwellMysql;
 	public MaxwellFilter filter;
-	public Boolean shykoMode;
 	public Boolean gtidMode;
 
 	public String databaseName;
 
 	public String includeDatabases, excludeDatabases, includeTables, excludeTables, excludeColumns, blacklistDatabases, blacklistTables;
 
+	public ProducerFactory producerFactory; // producerFactory has precedence over producerType
+	public String producerType;
+
 	public final Properties kafkaProperties;
 	public String kafkaTopic;
 	public String ddlKafkaTopic;
 	public String kafkaKeyFormat;
-	public String producerType;
 	public String kafkaPartitionHash;
 	public String kafkaPartitionKey;
 	public String kafkaPartitionColumns;
@@ -54,6 +63,9 @@ public class MaxwellConfig extends AbstractConfig {
 	public String outputFile;
 	public MaxwellOutputConfig outputConfig;
 	public String log_level;
+
+	public MetricRegistry metricRegistry;
+	public HealthCheckRegistry healthCheckRegistry;
 
 	public String metricsPrefix;
 	public String metricsReportingType;
@@ -82,9 +94,10 @@ public class MaxwellConfig extends AbstractConfig {
 		this.maxwellMysql = new MaxwellMysqlConfig();
 		this.schemaMysql = new MaxwellMysqlConfig();
 		this.masterRecovery = false;
-		this.shykoMode = false;
 		this.gtidMode = false;
 		this.bufferedProducerSize = 200;
+		this.metricRegistry = new MetricRegistry();
+		this.healthCheckRegistry = new HealthCheckRegistry();
 		setup(null, null); // setup defaults
 	}
 
@@ -106,7 +119,7 @@ public class MaxwellConfig extends AbstractConfig {
 		parser.accepts( "user", "username for host" ).withRequiredArg();
 		parser.accepts( "password", "password for host" ).withOptionalArg();
 		parser.accepts( "jdbc_options", "additional jdbc connection options" ).withOptionalArg();
-		parser.accepts( "binlog_connector", "run with new binlog connector library" ).withRequiredArg();
+		parser.accepts( "binlog_connector", "[deprecated]" ).withRequiredArg();
 
 		parser.accepts("__separator_2");
 
@@ -138,8 +151,7 @@ public class MaxwellConfig extends AbstractConfig {
 		parser.accepts( "kafka_partition_hash", "default|murmur3, hash function for partitioning").withRequiredArg();
 		parser.accepts( "kafka_topic", "optionally provide a topic name to push to. default: maxwell").withOptionalArg();
 		parser.accepts( "kafka_key_format", "how to format the kafka key; array|hash").withOptionalArg();
-		parser.accepts("kafka_version",
-		    "switch to kafka 0.8, 0.10, 0.10.1, or 0.10.2.1 producer (from 0.9)");
+		parser.accepts( "kafka_version", "use kafka 0.8, 0.9, 0.10, 0.10.1, or 0.10.2 producer (default 0.9)");
 
 		parser.accepts( "kinesis_stream", "kinesis stream name").withOptionalArg();
 
@@ -292,7 +304,6 @@ public class MaxwellConfig extends AbstractConfig {
 		this.maxwellMysql       = parseMysqlConfig("", options, properties);
 		this.replicationMysql   = parseMysqlConfig("replication_", options, properties);
 		this.schemaMysql        = parseMysqlConfig("schema_", options, properties);
-		this.shykoMode          = fetchBooleanOption("binlog_connector", options, properties, System.getenv("SHYKO_MODE") != null);
 		this.gtidMode           = fetchBooleanOption("gtid_mode", options, properties, System.getenv(GTID_MODE_ENV) != null);
 
 		this.databaseName       = fetchOption("schema_database", options, properties, "maxwell");
@@ -499,10 +510,6 @@ public class MaxwellConfig extends AbstractConfig {
 			);
 
 			this.replicationMysql.jdbcOptions = this.maxwellMysql.jdbcOptions;
-		}
-
-		if (gtidMode && !shykoMode) {
-			usageForOptions("Gtid mode is only support with shyko bin connector.", "--gtid_mode");
 		}
 
 		if (gtidMode && masterRecovery) {
