@@ -4,11 +4,15 @@ import com.github.shyiko.mysql.binlog.event.*;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.schema.Table;
 import com.zendesk.maxwell.schema.columndef.ColumnDef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.util.*;
 
 public class BinlogConnectorEvent {
+	final Logger LOGGER = LoggerFactory.getLogger(BinlogConnectorEvent.class);
+
 	public static final String BEGIN = "BEGIN";
 	public static final String COMMIT = "COMMIT";
 	public static final String SAVEPOINT = "SAVEPOINT";
@@ -101,7 +105,15 @@ public class BinlogConnectorEvent {
 			if ( includedColumns.get(colIdx) ) {
 				Object json = null;
 				if ( data[dataIdx] != null ) {
-					json = cd.asJSON(data[dataIdx]);
+					try {
+						json = cd.asJSON(data[dataIdx]);
+					} catch (Exception e) {
+						LOGGER.error("Failed to parse json for db: " + table.database + ", table: " + table.name + ", data[dataIdx]: " +
+								data[dataIdx] + ", colIdx: " + colIdx + ", dataIdx: " + dataIdx + ", column name: " + cd.getName() +
+								", column type: " + cd.getType() + ", position: " + row.getPosition() +
+								", ts: " + row.getTimestamp() + ", serverId: " + row.getServerId(), e);
+						throw e;
+					}
 				}
 				row.putData(cd.getName(), json);
 				dataIdx++;
