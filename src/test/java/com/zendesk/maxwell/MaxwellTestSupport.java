@@ -112,7 +112,7 @@ public class MaxwellTestSupport {
 
 		config.filter = filter;
 		config.initPosition = p;
-		config.bootstrapPollerInterval = 1L;
+		config.bootstrapPollerInterval = 10L;
 
 		return new MaxwellContext(config);
 	}
@@ -221,13 +221,17 @@ public class MaxwellTestSupport {
 			pollTime = 500L; // after the first row is receive, we go into a tight loop.
 
 			if ( row == null ) {
-				LOGGER.debug("timed out waiting for final row.  Last position we saw: " + lastPositionRead);
+				LOGGER.debug("timed out waiting for the first row.  Last position we saw: " + lastPositionRead);
 				break;
 			}
 
 			lastPositionRead = row.getPosition();
 
-			if ( lastPositionRead.getLastHeartbeatRead() >= finalHeartbeat ) {
+
+			if ( row.toJSON(outputConfig) != null )
+				list.add(row);
+
+			if ( lastPositionRead != null && lastPositionRead.getLastHeartbeatRead() >= finalHeartbeat ) {
 				// consume whatever's left over in the buffer.
 				for ( ;; ) {
 					RowMap r = maxwell.poll(pollTime);
@@ -240,8 +244,6 @@ public class MaxwellTestSupport {
 
 				break;
 			}
-			if ( row.toJSON(outputConfig) != null )
-				list.add(row);
 		}
 
 		callback.beforeTerminate(mysql);

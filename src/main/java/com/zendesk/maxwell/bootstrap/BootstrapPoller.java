@@ -1,20 +1,18 @@
 package com.zendesk.maxwell.bootstrap;
 
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
+import com.zendesk.maxwell.producer.AbstractProducer;
+import com.zendesk.maxwell.replication.Replicator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.zendesk.maxwell.MaxwellContext;
-import com.zendesk.maxwell.row.BootstrapRowMap;
 import com.zendesk.maxwell.util.StoppableTask;
 import com.zendesk.maxwell.util.StoppableTaskState;
 import snaq.db.ConnectionPool;
@@ -22,47 +20,33 @@ import snaq.db.ConnectionPool;
 public class BootstrapPoller implements StoppableTask {
 	static final Logger LOGGER = LoggerFactory.getLogger(BootstrapPoller.class);
 	private final AbstractBootstrapper bootstrapper;
+	private final ConnectionPool controlConnectionPool;
+	private final Replicator replicator;
+	private final AbstractProducer producer;
 
-	protected Connection schemaConnection;
 	protected volatile StoppableTaskState taskState;
-	private long pollInterval = 1000L;
+	private final long pollInterval;
 	private String sql = null;
-	private MaxwellContext context = null;
-	private String schemaDatabase = null;
 	private Thread bootstrapPollerThread = null;
-	private Map<Integer, BootstrapEntry> allentry = new HashMap<Integer, BootstrapEntry>();
-
-	public static class BootstrapEntry {
-		public int id;
-		public String database;
-		public String table;
-		public String where;
-		public boolean complete;
-		public long inserted_rows;
-		public long total_rows;
-		public Timestamp created_at;
-		public Timestamp started_at;
-		public Timestamp completed_at;
-		public String binlog_file;
-		public int binlog_position;
-
-		public boolean isUnstarted() {
-			return started_at == null && !complete;
-		}
-	}
+	private Map<Long, BootstrapTask> allTasks = new HashMap<>();
 
 	public BootstrapPoller(
 		AbstractBootstrapper bootstrapper,
 		long pollInterval,
-		ConnectionPool controlConnectionPoool
+		ConnectionPool controlConnectionPool,
+		Replicator replicator,
+		AbstractProducer producer // TODO: move to bootstrapper
 	) {
 		this.bootstrapper = bootstrapper;
 		this.pollInterval = pollInterval;
 		this.sql = "select * from bootstrap;";
+		this.controlConnectionPool = controlConnectionPool;
 		this.taskState = new StoppableTaskState(this.getClass().getName());
+		this.replicator = replicator;
+		this.producer = producer;
 	}
 
-	protected void ensureBootstrapPoller() {
+	public void ensureBootstrapPoller() {
 		if (bootstrapPollerThread != null && bootstrapPollerThread.isAlive()) {
 			return;
 		}
@@ -82,35 +66,24 @@ public class BootstrapPoller implements StoppableTask {
 	}
 
 	private void poll() {
-		try {
-			if (schemaConnection == null) {
-				schemaConnection = this.context.getMaxwellConnection();
-				schemaConnection.setCatalog(context.getConfig().databaseName);
-				// ensure to get latest data.
-				schemaConnection.setAutoCommit(true);
-			}
-
+		LOGGER.debug("begin Bootstrapper polling thread");
+		try ( Connection schemaConnection = controlConnectionPool.getConnection() ){
 			while (this.taskState.isRunning()) {
 				Statement statement = schemaConnection.createStatement();
 				ResultSet rs = statement.executeQuery(this.sql);
 
 				while (rs.next()) {
-					BootstrapEntry entry = new BootstrapEntry();
+					BootstrapTask task = new BootstrapTask();
 
-					entry.id = rs.getInt(1);
-					entry.database = rs.getString(2);
-					entry.table = rs.getString(3);
-					entry.where = rs.getString(4);
-					entry.complete = rs.getBoolean(5);
-					entry.inserted_rows = rs.getLong(6);
-					entry.total_rows = rs.getLong(7);
-					entry.created_at = rs.getTimestamp(8);
-					entry.started_at = rs.getTimestamp(9);
-					entry.completed_at = rs.getTimestamp(10);
-					entry.binlog_file = rs.getString(11);
-					entry.binlog_position = rs.getInt(12);
+					task.id = rs.getLong("id");
+					task.database = rs.getString("database_name");
+					task.table = rs.getString("table_name");
+					task.whereClause = rs.getString("where_clause");
+					task.complete = rs.getBoolean("is_complete");
+					task.startedAt = rs.getTimestamp("started_at");
+					task.completedAt = rs.getTimestamp("completed_at");
 
-					checkEntry(entry);
+					checkEntry(task);
 				}
 
 				rs.close();
@@ -123,45 +96,32 @@ public class BootstrapPoller implements StoppableTask {
 		} catch (Exception e) {
 			LOGGER.error(String.format("Bootstrap poller exited on error: %s", e.toString()));
 		} finally {
-			if (schemaConnection != null) {
-				try {
-					schemaConnection.close();
-				} catch (SQLException e) {
-					// ignored
-				}
-			}
-			schemaConnection = null;
+			this.taskState.stopped();
 		}
 	}
 
-	private void checkEntry(BootstrapEntry entry) throws IOException, SQLException {
-		BootstrapEntry old = allentry.get(entry.id);
-		if (old == null && entry.isUnstarted() ) {
-			bootstrapper.startBootstrap();
-			// new inserted row
-			BootstrapRowMap row = new BootstrapRowMap("insert", this.schemaDatabase, entry, context.getPosition());
-			LOGGER.debug(String.format("found a new bootstrapping row %s", row.toJSON()));
-			queue.push(row);
-		} else if (old != null && old.completed_at == null && old.complete == false && entry.completed_at != null
-				&& entry.complete == true) {
-			// completed row
-			BootstrapRowMap row = new BootstrapRowMap("update", this.schemaDatabase, entry, context.getPosition());
-			LOGGER.debug(String.format("found a updated bootstrapping row %s", row.toJSON()));
-			queue.push(row);
-		} else if (old != null && old.started_at != null && old.complete == false && entry.started_at == null
-				&& entry.complete == false) {
-			// resume
-			BootstrapRowMap row = new BootstrapRowMap("update", this.schemaDatabase, entry, context.getPosition());
-			LOGGER.debug(String.format("found a resumed bootstrapping row %s", row.toJSON()));
-			queue.push(row);
+	private void checkEntry(BootstrapTask task) throws Exception {
+		BootstrapTask old = allTasks.get(task.id);
+
+		if (old == null ) {
+			if ( task.startedAt == null ) {
+				LOGGER.info(String.format("being bootstrapping task: %s", task.logString()));
+				bootstrapper.startBootstrap(task, producer, replicator);
+			} else if ( task.completedAt == null ) {
+				LOGGER.info(String.format("restarting bootstrapping task: %s", task.logString()));
+				bootstrapper.startBootstrap(task, producer, replicator);
+			}
 		}
 
-		allentry.put(entry.id, entry);
+		allTasks.put(task.id, task);
 	}
 
 	@Override
 	public void requestStop() {
 		this.taskState.requestStop();
+
+		if ( bootstrapPollerThread != null )
+			bootstrapPollerThread.interrupt();
 	}
 
 	@Override

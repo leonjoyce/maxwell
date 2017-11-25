@@ -2,6 +2,7 @@ package com.zendesk.maxwell;
 
 import com.djdch.log4j.StaticShutdownCallbackRegistry;
 import com.zendesk.maxwell.bootstrap.AbstractBootstrapper;
+import com.zendesk.maxwell.bootstrap.BootstrapPoller;
 import com.zendesk.maxwell.producer.AbstractProducer;
 import com.zendesk.maxwell.recovery.Recovery;
 import com.zendesk.maxwell.recovery.RecoveryInfo;
@@ -172,7 +173,16 @@ public class Maxwell implements Runnable {
 
 		this.replicator = new BinlogConnectorReplicator(mysqlSchemaStore, producer, bootstrapper, this.context, initPosition);
 
-		bootstrapper.resume(producer, replicator);
+		if ( bootstrapper != null ) {
+			BootstrapPoller poller = new BootstrapPoller(bootstrapper,
+				this.config.bootstrapPollerInterval,
+				this.context.getMaxwellConnectionPool(),
+				this.replicator,
+				producer
+			);
+			poller.ensureBootstrapPoller();
+			this.context.addTask(poller);
+		}
 
 		replicator.setFilter(context.getFilter());
 

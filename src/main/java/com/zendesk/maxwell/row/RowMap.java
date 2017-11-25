@@ -232,12 +232,15 @@ public class RowMap implements Serializable {
 				g.writeBooleanField("commit", true);
 		}
 
-		BinlogPosition binlogPosition = this.nextPosition.getBinlogPosition();
-		if ( outputConfig.includesBinlogPosition )
-			g.writeStringField("position", binlogPosition.getFile() + ":" + binlogPosition.getOffset());
+		if ( this.nextPosition != null ) {
+			BinlogPosition binlogPosition = this.nextPosition.getBinlogPosition();
+			if (outputConfig.includesBinlogPosition && binlogPosition != null) {
+				g.writeStringField("position", binlogPosition.getFile() + ":" + binlogPosition.getOffset());
+			}
 
-		if ( outputConfig.includesGtidPosition)
-			g.writeStringField("gtid", binlogPosition.getGtid());
+			if (outputConfig.includesGtidPosition)
+				g.writeStringField("gtid", binlogPosition.getGtid());
+		}
 
 		if ( outputConfig.includesServerId && this.serverId != null ) {
 			g.writeNumberField("server_id", this.serverId);

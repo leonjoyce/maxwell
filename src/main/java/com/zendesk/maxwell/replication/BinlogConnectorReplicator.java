@@ -21,7 +21,6 @@ import com.zendesk.maxwell.bootstrap.AbstractBootstrapper;
 import com.zendesk.maxwell.metrics.MaxwellMetrics;
 import com.zendesk.maxwell.metrics.Metrics;
 import com.zendesk.maxwell.producer.AbstractProducer;
-import com.zendesk.maxwell.row.BootstrapRowMap;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.row.RowMapBuffer;
 import com.zendesk.maxwell.schema.Schema;
@@ -236,14 +235,6 @@ public class BinlogConnectorReplicator extends AbstractReplicator implements Rep
 					return processHeartbeats(row);
 				else
 					return row;
-			}
-
-			if (bootstrapper != null) {
-				BootstrapRowMap row = bootstrapper.pollBootstrapEvent();
-
-				if (row != null) {
-					return row;
-				}
 			}
 
 			event = pollEvent();

@@ -102,7 +102,7 @@ public class MaxwellContext {
 
 	public ConnectionPool getSchemaConnectionPool() {
 	    if (this.schemaConnectionPool != null) {
-		return schemaConnectionPool;
+			return schemaConnectionPool;
 	    }
 	    return replicationConnectionPool;
 	}
@@ -365,7 +365,7 @@ public class MaxwellContext {
 			case "sync":
 				return new SynchronousBootstrapper(this);
 			default:
-				return new NoOpBootstrapper(this);
+				return null;
 		}
 
 	}

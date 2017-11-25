@@ -183,8 +183,6 @@ public abstract class AbstractReplicator extends RunLoopProcess implements Repli
 			}
 		} else if (!bootstrapper.shouldSkip(row) && !isMaxwellRow(row))
 			producer.push(row);
-		else
-			bootstrapper.work(row, producer, this);
 	}
 
 	/**
