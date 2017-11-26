@@ -12,8 +12,14 @@ password=maxwell
 
 ######### general stuff #############
 
-# choose where to produce data to. currently this is one of: stdout|file|kafka
+# choose where to produce data to. currently this is one of: stdout|file|kafka|kinesis|pubsub|rabbitmq|redis
 #producer=kafka
+
+# set delivery timeout (including acknowledgement) in milliseconds for a COMMIT row message that has been sent by the producer,
+# where producer is either kafka or kinesis
+# maxwell may be terminated if the timeout has expired, when majority of the COMMIT row messages have been acknowledged
+# set it to 0 to turn off this check
+#producer_ack_timeout=120000 # default 0
 
 # set the log level.  note that you can configure things further in log4j2.xml
 #log_level=DEBUG # [DEBUG, INFO, WARN, ERROR]
@@ -103,9 +109,8 @@ password=maxwell
 #kafka.batch.size=16384
 
 # a few defaults.
-# These are 0.9-specific. They may or may not work with other versions.
+# These are 0.11-specific. They may or may not work with other versions.
 kafka.compression.type=snappy
-kafka.metadata.fetch.timeout.ms=5000
 kafka.retries=0
 kafka.acks=1
 
@@ -140,27 +145,50 @@ kinesis_stream=maxwell
 # Default: false
 #kinesis_md5_keys=true
 
+######### pub/sub #####################
+#pubsub_project_id=maxwell
+#pubsub_topic=maxwell
+#ddl_pubsub_topic=maxwell_ddl
+
+######### rabbitmq ###################
+#rabbitmq_host=rabbitmq_hostname
+#rabbitmq_user=guest
+#rabbitmq_pass=guest
+#rabbitmq_virtual_host=/
+#rabbitmq_exchange=maxwell
+#rabbitmq_exchange_type=fanout
+#rabbitmq_exchange_durable=false
+#rabbitmq_exchange_autodelete=false
+#rabbitmq_routing_key_template=%db%.%table%
+
+######### redis ######################
+#redis_host=redis_host
+#redis_port=6379
+#redis_auth=redis_auth
+#redis_database=0
+#redis_pub_channel=maxwell
+
 ######### filter stuff ###############
 
 # filter rows out of Maxwell's output.
 # all filters may be given either as literal names, or as java-style regular expressions.
 # This is a literal name: "exclude_tables=tblname".
-# This is a regexp:       "exclude_tables=/tblname_\d+/"
+# This is a regexp:       "exclude_tables=/tblname_\\d+/"
 
 # include *only* these databases
-#include_dbs=db1,/db\d+/
+#include_dbs=db1,/db\\d+/
 
 # exclude these databases (will override an include)
-#exclude_dbs=db3,/db\d+/
+#exclude_dbs=db3,/db\\d+/
 
 # include *only* these tables
-#include_tables=tbl1,/tbl\d+/
+#include_tables=tbl1,/tbl\\d+/
 
 # exclude these tables
-#exclude_tables=tbl1,/tbl\d+/
+#exclude_tables=tbl1,/tbl\\d+/
 
 # exclude these columns
-#exclude_columns=col1,/col\d+/
+#exclude_columns=col1,/col\\d+/
 
 # "blacklist" these dbs -- this means maxwell will ignore schema
 # changes happening to these databases.  Can be useful if you have a
@@ -169,9 +197,17 @@ kinesis_stream=maxwell
 # else maxwell will likely blow up.
 #
 # All of this is to say: don't set this unless you know what you're doing.
-#blacklist_dbs=db1,/db\d+/
+#blacklist_dbs=db1,/db\\d+/
 #blacklist_tables=table1,table_no
 #
+
+######### encryption ###############
+
+# Encryption mode. Possible values are none, data, and all. (default none)
+#encrypt=none
+
+# Specify the secret key to be used
+#secret_key=RandomInitVector
 
 ######## monitoring stuff ###########
 
@@ -187,8 +223,11 @@ kinesis_stream=maxwell
 # When metrics_type includes slf4j this is the frequency metrics are emitted to the log, in seconds
 #metrics_slf4j_interval=60
 
-# When metrics_type includes http this is the port the server will bind to.
-#metrics_http_port=8080
+# When metrics_type includes http or diagnostic is enabled, this is the port the server will bind to.
+#http_port=8080
+
+# When metrics_type includes http or diagnostic is enabled, this is the http path prefix, default /.
+#http_path_prefix=/some/path/
 
 # ** The following are Datadog specific. **
 # When metrics_type includes datadog this is the way metrics will be reported.
@@ -209,6 +248,15 @@ kinesis_stream=maxwell
 #metrics_datadog_host=localhost # default localhost
 #metrics_datadog_port=8125 # default 8125
 
+# Maxwell exposes http diagnostic endpoint to check below in parallel:
+# 1. binlog replication lag
+# 2. producer (currently kafka) lag
+
+# To enable Maxwell diagnostic
+#http_diagnostic=true # default false
+
+# Diagnostic check timeout in milliseconds, required if diagnostic = true
+#http_diagnostic_timeout=10000 # default 10000
 
 ######### misc stuff ###############
 
