@@ -11,6 +11,7 @@ option                                        | description
 --port PORT                                   | mysql port
 --database DATABASE                           | mysql database containing the table to bootstrap
 --table TABLE                                 | mysql table to bootstrap
+--where WHERE_CLAUSE                          | where clause to restrict the rows bootstrapped from the specified table
 
 ### Using the maxwell.bootstrap table
 ***
@@ -19,6 +20,13 @@ Alternatively you can insert a row in the `maxwell.bootstrap` table to trigger a
 ```
 mysql> insert into maxwell.bootstrap (database_name, table_name) values ('fooDB', 'barTable');
 ```
+Optionally, you can include a where clause to replay part of the data.
+
+bin/maxwell-bootstrap --config localhost.properties --database foobar --table test --log_level info
+
+or
+
+bin/maxwell-bootstrap --config localhost.properties --database foobar --table test --where "my_date >= '2017-01-07 00:00:00'" --log_level info
 
 ### Async vs Sync bootstrapping
 ***
@@ -30,10 +38,10 @@ In this async mode, non-bootstrapped tables are replicated as normal by the main
 ### Bootstrapping Data Format
 ***
 
-* a bootstrap starts with a document with `type = "bootstrap-start"`
-* then documents with `type = "insert"` (one per row in the table)
-* then one document per `INSERT`, `UPDATE` or `DELETE` that occurred since the beginning of bootstrap
-* finally a document with `type = "bootstrap-complete"`
+* a bootstrap starts with an event of `type = "bootstrap-start"`
+* then events with `type = "bootstrap-insert"` (one per row in the table)
+* then one event per `INSERT`, `UPDATE` or `DELETE` with standard event types i.e. `type = "insert"`, `type = "update"` or `type = "delete"` that occurred since the beginning of bootstrap
+* finally an event with `type = "bootstrap-complete"`
 
 Here's a complete example:
 ```
@@ -50,6 +58,11 @@ Corresponding replication stream output of table `fooDB.barTable`:
 {"database":"fooDB","table":"barTable","type":"bootstrap-insert","ts":1450557744,"data":{"txt":"bootstrap!"}}
 {"database":"fooDB","table":"barTable","type":"bootstrap-complete","ts":1450557744,"data":{}}
 ```
+
+### Failure Scenarios
+If Maxwell crashes during bootstrapping the next time it runs it will rerun the bootstrap in its entirety - regardless of previous progress.
+If this behavior is not desired, manual updates to the `bootstrap` table are required.
+Specifically, marking the unfinished bootstrap row as 'complete' (`is_complete` = 1) or deleting the row.
 
 <script>
   jQuery(document).ready(function () {

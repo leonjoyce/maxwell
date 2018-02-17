@@ -1,6 +1,6 @@
 package com.zendesk.maxwell.schema;
 
-import com.zendesk.maxwell.replication.BinlogPosition;
+import com.zendesk.maxwell.replication.Position;
 import snaq.db.ConnectionPool;
 
 /**
@@ -8,13 +8,15 @@ import snaq.db.ConnectionPool;
  * useful for "replay" mode.
  */
 public class ReadOnlyMysqlPositionStore extends MysqlPositionStore {
-	public ReadOnlyMysqlPositionStore(ConnectionPool pool, Long serverID, String clientID) {
-		super(pool, serverID, clientID);
+	public ReadOnlyMysqlPositionStore(ConnectionPool pool, Long serverID, String clientID, boolean gtidMode) {
+		super(pool, serverID, clientID, gtidMode);
 	}
 
 	@Override
-	public void set(BinlogPosition p) { }
+	public void set(Position p) { }
 
 	@Override
-	public void heartbeat() throws Exception { }
+	public long heartbeat() throws Exception {
+		return System.currentTimeMillis();
+	}
 }

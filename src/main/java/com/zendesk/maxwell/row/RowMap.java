@@ -1,14 +1,17 @@
 package com.zendesk.maxwell.row;
 
 import com.fasterxml.jackson.core.*;
+import com.zendesk.maxwell.producer.EncryptionMode;
 import com.zendesk.maxwell.replication.BinlogPosition;
 import com.zendesk.maxwell.producer.MaxwellOutputConfig;
+import com.zendesk.maxwell.replication.Position;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,8 +29,9 @@ public class RowMap implements Serializable {
 	private final String rowType;
 	private final String database;
 	private final String table;
-	private final Long timestamp;
-	private BinlogPosition nextPosition;
+	private final Long timestampMillis;
+	private final Long timestampSeconds;
+	private Position nextPosition;
 
 	private Long xid;
 	private boolean txCommit;
@@ -50,6 +54,11 @@ public class RowMap implements Serializable {
 				}
 			};
 
+	private static JsonGenerator resetJsonGenerator() {
+		byteArrayThreadLocal.get().reset();
+		return jsonGeneratorThreadLocal.get();
+	}
+
 	private static final ThreadLocal<JsonGenerator> jsonGeneratorThreadLocal =
 			new ThreadLocal<JsonGenerator>() {
 				@Override
@@ -66,12 +75,34 @@ public class RowMap implements Serializable {
 				}
 			};
 
-	public RowMap(String type, String database, String table, Long timestamp, List<String> pkColumns,
-			BinlogPosition nextPosition) {
+	private static final ThreadLocal<DataJsonGenerator> plaintextDataGeneratorThreadLocal =
+			new ThreadLocal<DataJsonGenerator>() {
+				@Override
+				protected DataJsonGenerator initialValue() {
+					return new PlaintextJsonGenerator(jsonGeneratorThreadLocal.get());
+				}
+			};
+
+	private static final ThreadLocal<EncryptingJsonGenerator> encryptingJsonGeneratorThreadLocal =
+			new ThreadLocal<EncryptingJsonGenerator>() {
+				@Override
+				protected EncryptingJsonGenerator initialValue(){
+					try {
+						return new EncryptingJsonGenerator(jsonGeneratorThreadLocal.get(),jsonFactory);
+					} catch (IOException e) {
+						LOGGER.error("error initializing EncryptingJsonGenerator", e);
+						return null;
+					}
+				}
+			};
+
+	public RowMap(String type, String database, String table, Long timestampMillis, List<String> pkColumns,
+			Position nextPosition) {
 		this.rowType = type;
 		this.database = database;
 		this.table = table;
-		this.timestamp = timestamp;
+		this.timestampMillis = timestampMillis;
+		this.timestampSeconds = timestampMillis / 1000;
 		this.data = new LinkedHashMap<>();
 		this.oldData = new LinkedHashMap<>();
 		this.nextPosition = nextPosition;
@@ -79,6 +110,7 @@ public class RowMap implements Serializable {
 		this.approximateSize = 100L; // more or less 100 bytes of overhead
 	}
 
+	//Do we want to encrypt this part?
 	public String pkToJson(KeyFormat keyFormat) throws IOException {
 		if ( keyFormat == KeyFormat.HASH )
 			return pkToJsonHash();
@@ -87,7 +119,7 @@ public class RowMap implements Serializable {
 	}
 
 	private String pkToJsonHash() throws IOException {
-		JsonGenerator g = jsonGeneratorThreadLocal.get();
+		JsonGenerator g = resetJsonGenerator();
 
 		g.writeStartObject(); // start of row {
 
@@ -112,7 +144,7 @@ public class RowMap implements Serializable {
 	}
 
 	private String pkToJsonArray() throws IOException {
-		JsonGenerator g = jsonGeneratorThreadLocal.get();
+		JsonGenerator g = resetJsonGenerator();
 
 		g.writeStartArray();
 		g.writeString(database);
@@ -138,31 +170,31 @@ public class RowMap implements Serializable {
 		if (pkColumns.isEmpty()) {
 			return database + table;
 		}
-		String keys="";
+		StringBuilder keys = new StringBuilder();
 		for (String pk : pkColumns) {
 			Object pkValue = null;
 			if (data.containsKey(pk))
 				pkValue = data.get(pk);
 			if (pkValue != null)
-				keys += pkValue.toString();
+				keys.append(pkValue.toString());
 		}
-		if (keys.isEmpty())
+		if (keys.length() == 0)
 			return "None";
-		return keys;
+		return keys.toString();
 	}
 
 	public String buildPartitionKey(List<String> partitionColumns, String partitionKeyFallback) {
-		String partitionKey="";
+		StringBuilder partitionKey= new StringBuilder();
 		for (String pc : partitionColumns) {
 			Object pcValue = null;
 			if (data.containsKey(pc))
 				pcValue = data.get(pc);
 			if (pcValue != null)
-				partitionKey += pcValue.toString();
+				partitionKey.append(pcValue.toString());
 		}
-		if (partitionKey.isEmpty())
+		if (partitionKey.length() == 0)
 			return getPartitionKeyFallback(partitionKeyFallback);
-		return partitionKey;
+		return partitionKey.toString();
 	}
 
 	private String getPartitionKeyFallback(String partitionKeyFallback) {
@@ -177,45 +209,53 @@ public class RowMap implements Serializable {
 		}
 	}
 
-	private void writeMapToJSON(String jsonMapName, LinkedHashMap<String, Object> data, boolean includeNullField) throws IOException {
-		JsonGenerator generator = jsonGeneratorThreadLocal.get();
-		generator.writeObjectFieldStart(jsonMapName); // start of jsonMapName: {
+	private void writeMapToJSON(
+			String jsonMapName,
+			LinkedHashMap<String, Object> data,
+			JsonGenerator g,
+			boolean includeNullField
+	) throws IOException, NoSuchAlgorithmException {
+		g.writeObjectFieldStart(jsonMapName);
 
-		for ( String key: data.keySet() ) {
+		for (String key : data.keySet()) {
 			Object value = data.get(key);
 
-			if ( value == null && !includeNullField)
+			if (value == null && !includeNullField)
 				continue;
 
-			if ( value instanceof List) { // sets come back from .asJSON as lists, and jackson can't deal with lists natively.
+			if (value instanceof List) { // sets come back from .asJSON as lists, and jackson can't deal with lists natively.
 				List stringList = (List) value;
 
-				generator.writeArrayFieldStart(key);
-				for ( Object s : stringList )  {
-					generator.writeObject(s);
+				g.writeArrayFieldStart(key);
+				for (Object s : stringList) {
+					g.writeObject(s);
 				}
-				generator.writeEndArray();
+				g.writeEndArray();
+			} else if (value instanceof RawJSONString) {
+				// JSON column type, using binlog-connector's serializers.
+				g.writeFieldName(key);
+				g.writeRawValue(((RawJSONString) value).json);
 			} else {
-				generator.writeObjectField(key, value);
+				g.writeObjectField(key, value);
 			}
 		}
 
-		generator.writeEndObject(); // end of 'jsonMapName: { }'
+		g.writeEndObject(); // end of 'jsonMapName: { }'
 	}
 
-	public String toJSON() throws IOException {
+	public String toJSON() throws Exception {
 		return toJSON(new MaxwellOutputConfig());
 	}
 
-	public String toJSON(MaxwellOutputConfig outputConfig) throws IOException {
-		JsonGenerator g = jsonGeneratorThreadLocal.get();
+	public String toJSON(MaxwellOutputConfig outputConfig) throws Exception {
+		JsonGenerator g = resetJsonGenerator();
 
 		g.writeStartObject(); // start of row {
 
 		g.writeStringField("database", this.database);
 		g.writeStringField("table", this.table);
 		g.writeStringField("type", this.rowType);
-		g.writeNumberField("ts", this.timestamp);
+		g.writeNumberField("ts", this.timestampSeconds);
 
 		if ( outputConfig.includesCommitInfo ) {
 			if ( this.xid != null )
@@ -225,9 +265,13 @@ public class RowMap implements Serializable {
 				g.writeBooleanField("commit", true);
 		}
 
+		BinlogPosition binlogPosition = this.nextPosition.getBinlogPosition();
 		if ( outputConfig.includesBinlogPosition )
-			g.writeStringField("position", this.nextPosition.getFile() + ":" + this.nextPosition.getOffset());
+			g.writeStringField("position", binlogPosition.getFile() + ":" + binlogPosition.getOffset());
 
+
+		if ( outputConfig.includesGtidPosition)
+			g.writeStringField("gtid", binlogPosition.getGtid());
 
 		if ( outputConfig.includesServerId && this.serverId != null ) {
 			g.writeNumberField("server_id", this.serverId);
@@ -253,15 +297,31 @@ public class RowMap implements Serializable {
 			}
 		}
 
-		writeMapToJSON("data", this.data, outputConfig.includesNulls);
 
-		if ( !this.oldData.isEmpty() ) {
-			writeMapToJSON("old", this.oldData, true);
+		EncryptionContext encryptionContext = null;
+		if (outputConfig.encryptionEnabled()) {
+			encryptionContext = EncryptionContext.create(outputConfig.secretKey);
 		}
+
+		DataJsonGenerator dataWriter = outputConfig.encryptionMode == EncryptionMode.ENCRYPT_DATA
+			? encryptingJsonGeneratorThreadLocal.get()
+			: plaintextDataGeneratorThreadLocal.get();
+
+		JsonGenerator dataGenerator = dataWriter.begin();
+		writeMapToJSON("data", this.data, dataGenerator, outputConfig.includesNulls);
+		if( !this.oldData.isEmpty() ){
+			writeMapToJSON("old", this.oldData, dataGenerator, outputConfig.includesNulls);
+		}
+		dataWriter.end(encryptionContext);
 
 		g.writeEndObject(); // end of row
 		g.flush();
 
+		if(outputConfig.encryptionMode == EncryptionMode.ENCRYPT_ALL){
+			String plaintext = jsonFromStream();
+			encryptingJsonGeneratorThreadLocal.get().writeEncryptedObject(plaintext, encryptionContext);
+			g.flush();
+		}
 		return jsonFromStream();
 	}
 
@@ -311,7 +371,7 @@ public class RowMap implements Serializable {
 		this.approximateSize += approximateKVSize(key, value);
 	}
 
-	public BinlogPosition getPosition() {
+	public Position getPosition() {
 		return nextPosition;
 	}
 
@@ -356,7 +416,11 @@ public class RowMap implements Serializable {
 	}
 
 	public Long getTimestamp() {
-		return timestamp;
+		return timestampSeconds;
+	}
+
+	public Long getTimestampMillis() {
+		return timestampMillis;
 	}
 
 	public boolean hasData(String name) {
@@ -365,5 +429,22 @@ public class RowMap implements Serializable {
 
 	public String getRowType() {
 		return this.rowType;
+	}
+
+	// determines whether there is anything for the producer to output
+	// override this for extended classes that don't output a value
+	// return false when there is a heartbeat row or other row with suppressed output
+	public boolean shouldOutput(MaxwellOutputConfig outputConfig) {
+		return true;
+	}
+
+	public LinkedHashMap<String, Object> getData()
+	{
+		return new LinkedHashMap<>(data);
+	}
+
+	public LinkedHashMap<String, Object> getOldData()
+	{
+		return new LinkedHashMap<>(oldData);
 	}
 }

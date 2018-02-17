@@ -1,20 +1,76 @@
 package com.zendesk.maxwell;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.*;
-
+import com.zendesk.maxwell.producer.EncryptionMode;
 import com.zendesk.maxwell.producer.MaxwellOutputConfig;
 import com.zendesk.maxwell.row.RowMap;
+import com.zendesk.maxwell.schema.SchemaStoreSchema;
 import org.apache.commons.lang3.ArrayUtils;
+import org.junit.Test;
 
 import java.sql.ResultSet;
 import java.util.List;
-import java.util.regex.*;
+import java.util.Map;
+import java.util.regex.Pattern;
 
-import com.zendesk.maxwell.schema.SchemaStoreSchema;
-import org.junit.Test;
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
+
 
 public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
+	@Test
+	public void testEncryptedData() throws Exception{
+		MaxwellOutputConfig outputConfig = new MaxwellOutputConfig();
+		outputConfig.encryptionMode = EncryptionMode.ENCRYPT_DATA;
+		outputConfig.secretKey = "aaaaaaaaaaaaaaaa";
+		List<RowMap> list;
+		String input[] = {"insert into minimal set account_id =1, text_field='hello'"};
+		list = getRowsForSQL(input);
+		String json = list.get(0).toJSON(outputConfig);
+
+		Map<String,Object> output = MaxwellTestJSON.parseJSON(json);
+		Map<String, Object> decrypted = MaxwellTestJSON.parseEncryptedJSON(output, outputConfig.secretKey);
+
+		assertTrue(output.get("database").equals("shard_1"));
+		assertTrue(output.get("table").equals("minimal"));
+		assertTrue(Pattern.matches("\\d+", output.get("xid").toString()));
+		assertTrue(output.get("type").equals("insert"));
+		assertTrue(Pattern.matches("\\d+",output.get("ts").toString()));
+		assertTrue(output.get("commit").equals(true));
+		assertTrue(((Map) decrypted.get("data")).get("account_id").equals(1));
+		assertTrue(((Map) decrypted.get("data")).get("text_field").equals("hello"));
+	}
+
+	@Test
+	public void testEncryptedAll() throws Exception{
+		MaxwellOutputConfig outputConfig = new MaxwellOutputConfig();
+		outputConfig.encryptionMode = EncryptionMode.ENCRYPT_ALL;
+		outputConfig.secretKey = "aaaaaaaaaaaaaaaa";
+		List<RowMap> list;
+		String input[] = {"insert into minimal set account_id =1, text_field='hello'"};
+		list = getRowsForSQL(input);
+		String json = list.get(0).toJSON(outputConfig);
+
+		Map<String,Object> output = MaxwellTestJSON.parseJSON(json);
+		Map<String, Object> decrypted = MaxwellTestJSON.parseEncryptedJSON(output, outputConfig.secretKey);
+
+		assertArrayEquals(output.keySet().toArray(), new String[]{ "encrypted" });
+
+		assertTrue(decrypted.get("database").equals("shard_1"));
+		assertTrue(decrypted.get("table").equals("minimal"));
+		assertTrue(Pattern.matches("\\d+", decrypted.get("xid").toString()));
+		assertTrue(decrypted.get("type").equals("insert"));
+		assertTrue(Pattern.matches("\\d+",decrypted.get("ts").toString()));
+		assertTrue(decrypted.get("commit").equals(true));
+		assertTrue(((Map) decrypted.get("data")).get("account_id").equals(1));
+		assertTrue(((Map) decrypted.get("data")).get("text_field").equals("hello"));
+	}
 	@Test
 	public void testGetEvent() throws Exception {
 		List<RowMap> list;
@@ -62,12 +118,17 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 		outputConfig.includesCommitInfo = true;
 		outputConfig.includesBinlogPosition = true;
+		outputConfig.includesGtidPosition = true;
 
 		list = getRowsForSQL(input);
 		String json = list.get(0).toJSON(outputConfig);
 
 		// Binlog
-		assertTrue(Pattern.matches(".*\"position\":\"master.0+1.\\d+\".*", json));
+		if (MaxwellTestSupport.inGtidMode()) {
+			assertTrue(Pattern.matches(".*\"gtid\":\".*:.*\".*", json));
+		} else {
+			assertTrue(Pattern.matches(".*\"position\":\"master.0+1.\\d+\".*", json));
+		}
 		// Commit
 		assertTrue(Pattern.matches(".*\"commit\":true.*", json));
 		// Xid
@@ -274,7 +335,9 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 	public void testSystemBlacklist() throws Exception  {
 		String sql[] = {
 			"create table mysql.ha_health_check ( id int )",
-			"insert into mysql.ha_health_check set id = 1"
+			"create table mysql.rds_heartbeat2 ( id int )",
+			"insert into mysql.ha_health_check set id = 1",
+			"insert into mysql.rds_heartbeat2 set id = 1"
 		};
 
 		List<RowMap> list = getRowsForSQL(sql);
@@ -313,8 +376,7 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	@Test
 	public void testRunMinimalBinlog() throws Exception {
-		if ( server.getVersion().equals("5.5") )
-			return;
+		requireMinimumVersion(server.VERSION_5_6);
 
 		try {
 			server.getConnection().createStatement().execute("set global binlog_row_image='minimal'");
@@ -339,6 +401,10 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	@Test
 	public void testCreateSelectJSON() throws Exception {
+		if (MaxwellTestSupport.inGtidMode()) {
+			// "CREATE TABLE ... SELECT is forbidden when @@GLOBAL.ENFORCE_GTID_CONSISTENCY = 1"
+			return;
+		}
 		runJSON("/json/test_create_select");
 	}
 
@@ -359,8 +425,8 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	@Test
 	public void testZeroCreatedAtJSON() throws Exception {
-		if ( server.getVersion().equals("5.5") ) // 5.6 not yet supported for this test
-			runJSON("/json/test_zero_created_at");
+		assumeTrue(server.supportsZeroDates());
+		runJSON("/json/test_zero_created_at");
 	}
 
 	@Test
@@ -399,8 +465,8 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	@Test
 	public void testTime() throws Exception {
-		if ( server.getVersion().equals("5.6") )
-			runJSON("/json/test_time");
+		requireMinimumVersion(server.VERSION_5_6);
+		runJSON("/json/test_time");
 	}
 
 	@Test
@@ -421,6 +487,12 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 	@Test
 	public void testColumnCase() throws Exception {
 		runJSON("/json/test_column_case");
+	}
+
+	@Test
+	public void testJson() throws Exception {
+		requireMinimumVersion(server.VERSION_5_7);
+		runJSON("/json/test_json");
 	}
 
 	static String[] createDBSql = {
@@ -450,4 +522,44 @@ public class MaxwellIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	}
 
+	@Test
+	public void testSchemaServerDifferentThanReplicationServer() throws Exception {
+		String[] opts = {
+			"--replication_host=replhost",
+			"--replication_port=1001",
+			"--replication_user=repluser",
+			"--replication_password=replpass",
+			"--schema_host=schemahost",
+			"--schema_port=2002",
+			"--schema_user=schemauser",
+			"--schema_password=schemapass"
+		};
+		MaxwellConfig config = new MaxwellConfig(opts);
+		assertEquals(config.replicationMysql.host, "replhost");
+		assertThat(config.replicationMysql.port, is(1001));
+		assertEquals(config.replicationMysql.user, "repluser");
+		assertEquals(config.replicationMysql.password, "replpass");
+		assertEquals(config.schemaMysql.host, "schemahost");
+		assertThat(config.schemaMysql.port, is(2002));
+		assertEquals(config.schemaMysql.user, "schemauser");
+		assertEquals(config.schemaMysql.password, "schemapass");
+	}
+
+	@Test
+	public void testSchemaServerNotSet() throws Exception {
+		String[] opts = {
+			"--replication_host=replhost",
+			"--replication_port=1001",
+			"--replication_user=repluser",
+			"--replication_password=replpass",
+		};
+		MaxwellConfig config = new MaxwellConfig(opts);
+		assertEquals(config.replicationMysql.host, "replhost");
+		assertThat(config.replicationMysql.port, is(1001));
+		assertEquals(config.replicationMysql.user, "repluser");
+		assertEquals(config.replicationMysql.password, "replpass");
+		assertNull(config.schemaMysql.host);
+		assertNull(config.schemaMysql.user);
+		assertNull(config.schemaMysql.password);
+	}
 }

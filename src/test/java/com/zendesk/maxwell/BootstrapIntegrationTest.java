@@ -1,12 +1,16 @@
 package com.zendesk.maxwell;
 
+import com.zendesk.maxwell.producer.EncryptionMode;
+import com.zendesk.maxwell.producer.MaxwellOutputConfig;
 import com.zendesk.maxwell.row.RowMap;
 import org.junit.Test;
 
 import java.sql.Timestamp;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertThat;
 
 public class BootstrapIntegrationTest extends MaxwellTestWithIsolatedServer {
@@ -18,6 +22,11 @@ public class BootstrapIntegrationTest extends MaxwellTestWithIsolatedServer {
 	@Test
 	public void testMultipleRowBootstrap() throws Exception {
 		runJSON("json/bootstrap-multiple-row");
+	}
+
+	@Test
+	public void testMultipleRowBootstrapWithWhereclause() throws Exception {
+		runJSON("json/bootstrap-multiple-row-with-whereclause");
 	}
 
 	@Test
@@ -110,7 +119,7 @@ public class BootstrapIntegrationTest extends MaxwellTestWithIsolatedServer {
 		testColumnType("date", "'2015-11-07'","2015-11-07");
 		testColumnType("datetime", "'2015-11-07 01:02:03'","2015-11-07 01:02:03");
 
-		if ( !server.getVersion().equals("5.7") ) {
+		if (server.supportsZeroDates()) {
 			testColumnType("date", "'0000-00-00'",null);
 			testColumnType("datetime", "'0000-00-00 00:00:00'", null);
 			testColumnType("timestamp", "'0000-00-00 00:00:00'","" + epoch.substring(0, epoch.length() - 2) + "", null);
@@ -127,24 +136,23 @@ public class BootstrapIntegrationTest extends MaxwellTestWithIsolatedServer {
 
 	@Test
 	public void testSubsecondTypes() throws Exception {
-		if ( server.getVersion().equals("5.6") ) {
-			testColumnType("timestamp(6)", "'2015-11-07 01:02:03.333444'","2015-11-07 01:02:03.333444");
-			testColumnType("timestamp(6)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123000");
-			testColumnType("timestamp(6)", "'2015-11-07 01:02:03.0'","2015-11-07 01:02:03.000000");
+		requireMinimumVersion(server.VERSION_5_6);
+		testColumnType("timestamp(6)", "'2015-11-07 01:02:03.333444'","2015-11-07 01:02:03.333444");
+		testColumnType("timestamp(6)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123000");
+		testColumnType("timestamp(6)", "'2015-11-07 01:02:03.0'","2015-11-07 01:02:03.000000");
 
-			testColumnType("timestamp(3)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123");
-			testColumnType("timestamp(3)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123");
-			testColumnType("timestamp(3)", "'2015-11-07 01:02:03.1'","2015-11-07 01:02:03.100");
-			testColumnType("timestamp(3)", "'2015-11-07 01:02:03.0'","2015-11-07 01:02:03.000");
+		testColumnType("timestamp(3)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123");
+		testColumnType("timestamp(3)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123");
+		testColumnType("timestamp(3)", "'2015-11-07 01:02:03.1'","2015-11-07 01:02:03.100");
+		testColumnType("timestamp(3)", "'2015-11-07 01:02:03.0'","2015-11-07 01:02:03.000");
 
-			testColumnType("datetime(6)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123456");
-			testColumnType("datetime(6)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123000");
-			testColumnType("datetime(3)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123");
-			testColumnType("datetime(3)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123");
-			testColumnType("time(3)", "'01:02:03.123456'","01:02:03.123");
-			testColumnType("time(6)", "'01:02:03.123456'","01:02:03.123456");
-			testColumnType("time(3)", "'01:02:03.123'","01:02:03.123");
-		}
+		testColumnType("datetime(6)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123456");
+		testColumnType("datetime(6)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123000");
+		testColumnType("datetime(3)", "'2015-11-07 01:02:03.123456'","2015-11-07 01:02:03.123");
+		testColumnType("datetime(3)", "'2015-11-07 01:02:03.123'","2015-11-07 01:02:03.123");
+		testColumnType("time(3)", "'01:02:03.123456'","01:02:03.123");
+		testColumnType("time(6)", "'01:02:03.123456'","01:02:03.123456");
+		testColumnType("time(3)", "'01:02:03.123'","01:02:03.123");
 	}
 
 	@Test
@@ -192,14 +200,28 @@ public class BootstrapIntegrationTest extends MaxwellTestWithIsolatedServer {
 		};
 
 		List<RowMap> rows = getRowsForSQL(input);
+		testColumnTypeSerialization(EncryptionMode.ENCRYPT_NONE, rows, expectedNormalJsonValue, expectedBootstrappedJsonValue);
+		testColumnTypeSerialization(EncryptionMode.ENCRYPT_DATA, rows, expectedNormalJsonValue, expectedBootstrappedJsonValue);
+		testColumnTypeSerialization(EncryptionMode.ENCRYPT_ALL, rows, expectedNormalJsonValue, expectedBootstrappedJsonValue);
+	}
+
+	private void testColumnTypeSerialization(EncryptionMode encryptionMode, List<RowMap> rows, Object expectedNormalJsonValue, Object expectedBootstrappedJsonValue) throws Exception {
 		boolean foundNormalRow = false;
+		MaxwellOutputConfig outputConfig = new MaxwellOutputConfig();
+		outputConfig.encryptionMode = encryptionMode;
+		outputConfig.secretKey = "aaaaaaaaaaaaaaaa";
 
 		for ( RowMap r : rows ) {
-			String json = r.toJSON();
+			Map<String, Object> output = MaxwellTestJSON.parseJSON(r.toJSON(outputConfig));
+			Map<String, Object> decrypted = MaxwellTestJSON.parseEncryptedJSON(output, outputConfig.secretKey);
 
-			Map<String, Object> data, output = MaxwellTestJSON.parseJSON(r.toJSON());
+			if (encryptionMode == EncryptionMode.ENCRYPT_ALL) {
+				output = decrypted;
+			}
+
 			if ( output.get("table").equals("column_test") && output.get("type").equals("insert") ) {
-				data = (Map<String, Object>) output.get("data");
+				Map<String, Object> dataSource = encryptionMode == EncryptionMode.ENCRYPT_DATA ? decrypted : output;
+				Map<String, Object> data = (Map<String, Object>) dataSource.get("data");
 				if ( !foundNormalRow ) {
 					foundNormalRow = true;
 					assertThat(data.get("col"), is(expectedNormalJsonValue));

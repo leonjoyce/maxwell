@@ -1,4 +1,10 @@
 language: java
+jdk:
+  - oraclejdk8
+addons:
+  apt:
+    packages:
+      - oracle-java8-installer
 branches:
   only: master
 before_install:
@@ -6,13 +12,7 @@ before_install:
   - sudo apt-get install pastebinit
 install: true
 script:
-  - echo travis_fold:start:compile
-  - KAFKA_VERSION=0.8.2.2 make depclean compile
-  - KAFKA_VERSION=0.10.0.1 make depclean compile
-  - KAFKA_VERSION=0.10.1.0 make depclean compile
-  - make depclean
-  - echo travis_fold:end:compile
-  - make test
+  - src/test/travis.sh
 after_script:
   - pastebinit -i test.log
 env:
@@ -20,9 +20,7 @@ env:
     - MYSQL_VERSION=5.5
     - MYSQL_VERSION=5.6
     - MYSQL_VERSION=5.7
-    - SHYKO_MODE=1
-      MYSQL_VERSION=5.5
-    - SHYKO_MODE=1
+    - GTID_MODE=1
       MYSQL_VERSION=5.6
-    - SHYKO_MODE=1
+    - GTID_MODE=1
       MYSQL_VERSION=5.7

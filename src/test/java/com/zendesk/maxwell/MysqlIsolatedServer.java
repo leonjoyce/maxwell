@@ -2,6 +2,7 @@ package com.zendesk.maxwell;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zendesk.maxwell.replication.MysqlVersion;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,11 @@ import java.util.Map;
 
 public class MysqlIsolatedServer {
 	public static final Long SERVER_ID = 4321L;
+
+	public final MysqlVersion VERSION_5_5 = new MysqlVersion(5, 5);
+	public final MysqlVersion VERSION_5_6 = new MysqlVersion(5, 6);
+	public final MysqlVersion VERSION_5_7 = new MysqlVersion(5, 7);
+
 	private Connection connection; private String baseDir;
 	private int port;
 	private int serverPid;
@@ -32,13 +38,26 @@ public class MysqlIsolatedServer {
 		if ( xtraParams == null )
 			xtraParams = "";
 
+		// By default, MySQL doesn't run under root. However, in an environment like Docker, the root user is the
+		// only available user by default. By adding "--user=root" when the root user is used, we can make sure
+		// the tests can continue to run.
+		boolean isRoot = System.getProperty("user.name").equals("root");
+
+		String gtidParams = "";
+		if (MaxwellTestSupport.inGtidMode()) {
+			LOGGER.info("In gtid test mode.");
+			gtidParams =
+				"--gtid-mode=ON " +
+				"--log-slave-updates=ON " +
+				"--enforce-gtid-consistency=true ";
+		}
 		String serverID = "";
 		if ( !xtraParams.contains("--server_id") )
 			serverID = "--server_id=" + SERVER_ID;
 
 		ProcessBuilder pb = new ProcessBuilder(
 				dir + "/src/test/onetimeserver",
-				"--mysql-version=" + this.getVersion(),
+				"--mysql-version=" + this.getVersionString(),
 				"--log-slave-updates",
 				"--log-bin=master",
 				"--binlog_format=row",
@@ -48,6 +67,8 @@ public class MysqlIsolatedServer {
 				"--sync_binlog=0",
 				"--default-time-zone=+00:00",
 				"--verbose",
+				isRoot ? "--user=root" : "",
+				gtidParams,
 				xtraParams
 		);
 
@@ -167,9 +188,18 @@ public class MysqlIsolatedServer {
 		} catch ( IOException e ) {}
 	}
 
-	public String getVersion() {
+	private String getVersionString() {
 		String mysqlVersion = System.getenv("MYSQL_VERSION");
-		return mysqlVersion == null ? "5.5" : mysqlVersion;
+		return mysqlVersion == null ? "5.6" : mysqlVersion;
+	}
 
+	public MysqlVersion getVersion() {
+		String[] parts = getVersionString().split("\\.");
+		return new MysqlVersion(Integer.valueOf(parts[0]), Integer.valueOf(parts[1]));
+	}
+
+	public boolean supportsZeroDates() {
+		// https://dev.mysql.com/doc/refman/5.7/en/sql-mode.html#sqlmode_no_zero_date
+		return !getVersion().atLeast(VERSION_5_7);
 	}
 }

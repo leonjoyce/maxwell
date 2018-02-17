@@ -170,11 +170,13 @@ public class DDLParserTest {
 			"alter table t add index foo (a asc)",
 			"alter table t add index foo (a) COMMENT 'hello world'",
 			"alter table t add spatial key (`id`)",
+			"ALTER TABLE foo ADD feee int(11) COLLATE utf8_unicode_ci NOT NULL DEFAULT '0' COMMENT 'eee' AFTER id",
 			"alter table t alter column `foo` SET DEFAULT 112312",
 			"alter table t alter column `foo` SET DEFAULT 1.2",
 			"alter table t alter column `foo` SET DEFAULT 'foo'",
 			"alter table t alter column `foo` SET DEFAULT true",
 			"alter table t alter column `foo` SET DEFAULT false",
+			"alter table t alter column `foo` SET DEFAULT -1",
 			"alter table t alter column `foo` drop default",
 			"alter table t CHARACTER SET latin1 COLLATE = 'utf8'",
 			"ALTER TABLE `test` ENGINE=`InnoDB` CHARACTER SET latin1",
@@ -203,7 +205,11 @@ public class DDLParserTest {
 			"create table `shard1.foo` ( `id.foo` int ) collate = `utf8_bin`",
 			"create table if not exists audit_payer_bank_details (event_time TIMESTAMP default CURRENT_TIMESTAMP())",
 			"ALTER TABLE foo RENAME INDEX index_quote_request_follow_on_data_on_model_name TO index_quote_request_follow_on_data_on_model_class_name",
-			"ALTER TABLE foo DROP COLUMN `ducati` CASCADE"
+			"ALTER TABLE foo DROP COLUMN `ducati` CASCADE",
+			"CREATE TABLE account_groups ( visible_to_all CHAR(1) DEFAULT 'N' NOT NULL CHECK (visible_to_all IN ('Y','N')))",
+			"ALTER TABLE \"foo\" drop column a", // ansi-double-quoted tables
+			"create table vc11( id serial, name varchar(10) not null default \"\")"
+
 		};
 
 		for ( String s : testSQL ) {

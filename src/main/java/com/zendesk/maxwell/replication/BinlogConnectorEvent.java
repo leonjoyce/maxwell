@@ -4,21 +4,27 @@ import com.github.shyiko.mysql.binlog.event.*;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.schema.Table;
 import com.zendesk.maxwell.schema.columndef.ColumnDef;
-import com.zendesk.maxwell.util.Logging;
 
 import java.io.Serializable;
 import java.util.*;
 
 public class BinlogConnectorEvent {
+	public static final String BEGIN = "BEGIN";
+	public static final String COMMIT = "COMMIT";
+	public static final String SAVEPOINT = "SAVEPOINT";
 	private BinlogPosition position;
 	private BinlogPosition nextPosition;
 	private final Event event;
+	private final String gtidSetStr;
+	private final String gtid;
 
-	public BinlogConnectorEvent(Event event, String filename) {
+	public BinlogConnectorEvent(Event event, String filename, String gtidSetStr, String gtid) {
 		this.event = event;
+		this.gtidSetStr = gtidSetStr;
+		this.gtid = gtid;
 		EventHeaderV4 hV4 = (EventHeaderV4) event.getHeader();
-		this.nextPosition = BinlogPosition.at(hV4.getNextPosition(), filename);
-		this.position = BinlogPosition.at(hV4.getPosition(), filename);
+		this.nextPosition = new BinlogPosition(gtidSetStr, gtid, hV4.getNextPosition(), filename);
+		this.position = new BinlogPosition(gtidSetStr, gtid, hV4.getPosition(), filename);
 	}
 
 	public Event getEvent() {
@@ -57,11 +63,6 @@ public class BinlogConnectorEvent {
 		return event.getHeader().getEventType();
 	}
 
-	public void setLastHeartbeat(Long lastHeartbeat) {
-		this.position     = new BinlogPosition(this.position.getOffset(), this.position.getFile(), lastHeartbeat);
-		this.nextPosition = new BinlogPosition(this.position.getOffset(), this.position.getFile(), lastHeartbeat);
-	}
-
 	public Long getTableID() {
 		EventData data = event.getData();
 		switch ( event.getHeader().getEventType() ) {
@@ -78,6 +79,19 @@ public class BinlogConnectorEvent {
 				return ((TableMapEventData) data).getTableId();
 		}
 		return null;
+	}
+
+	public boolean isCommitEvent() {
+		EventType eventType = getType();
+		if (eventType == EventType.XID) {
+			return true;
+		} else if (eventType == EventType.QUERY) {
+			// MyISAM will output a "COMMIT" QUERY_EVENT instead of a XID_EVENT.
+			// There's no transaction ID but we can still set "commit: true"
+			return COMMIT.equals(queryData().getSql());
+		}
+
+		return false;
 	}
 
 	private void writeData(Table table, RowMap row, Serializable[] data, BitSet includedColumns) {
@@ -125,34 +139,35 @@ public class BinlogConnectorEvent {
 		}
 	}
 
-	private RowMap buildRowMap(String type, Serializable[] data, Table table, BitSet includedColumns) {
+	private RowMap buildRowMap(String type, Position position, Serializable[] data, Table table, BitSet includedColumns) {
 		RowMap map = new RowMap(
 			type,
 			table.getDatabase(),
 			table.getName(),
-			event.getHeader().getTimestamp() / 1000,
+			event.getHeader().getTimestamp(),
 			table.getPKList(),
-			nextPosition
+			position
 		);
 
 		writeData(table, map, data, includedColumns);
 		return map;
 	}
 
-	public List<RowMap> jsonMaps(Table table) {
+	public List<RowMap> jsonMaps(Table table, Position lastHeartbeatPosition) {
 		ArrayList<RowMap> list = new ArrayList<>();
 
+		Position nextPosition = lastHeartbeatPosition.withBinlogPosition(this.nextPosition);
 		switch ( getType() ) {
 			case WRITE_ROWS:
 			case EXT_WRITE_ROWS:
 				for ( Serializable[] data : writeRowsData().getRows() ) {
-					list.add(buildRowMap("insert", data, table, writeRowsData().getIncludedColumns()));
+					list.add(buildRowMap("insert", nextPosition, data, table, writeRowsData().getIncludedColumns()));
 				}
 				break;
 			case DELETE_ROWS:
 			case EXT_DELETE_ROWS:
 				for ( Serializable[] data : deleteRowsData().getRows() ) {
-					list.add(buildRowMap("delete", data, table, deleteRowsData().getIncludedColumns()));
+					list.add(buildRowMap("delete", nextPosition, data, table, deleteRowsData().getIncludedColumns()));
 				}
 				break;
 			case UPDATE_ROWS:
@@ -161,7 +176,7 @@ public class BinlogConnectorEvent {
 					Serializable[] data = e.getValue();
 					Serializable[] oldData = e.getKey();
 
-					RowMap r = buildRowMap("update", data, table, updateRowsData().getIncludedColumns());
+					RowMap r = buildRowMap("update", nextPosition, data, table, updateRowsData().getIncludedColumns());
 					writeOldData(table, r, oldData, updateRowsData().getIncludedColumnsBeforeUpdate());
 					list.add(r);
 				}

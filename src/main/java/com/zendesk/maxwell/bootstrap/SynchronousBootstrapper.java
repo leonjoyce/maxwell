@@ -2,6 +2,7 @@ package com.zendesk.maxwell.bootstrap;
 
 import com.zendesk.maxwell.replication.BinlogPosition;
 import com.zendesk.maxwell.MaxwellContext;
+import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.replication.Replicator;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.producer.AbstractProducer;
@@ -37,22 +38,28 @@ public class SynchronousBootstrapper extends AbstractBootstrapper {
 		String databaseName = bootstrapDatabase(startBootstrapRow);
 		String tableName = bootstrapTable(startBootstrapRow);
 
-		LOGGER.debug(String.format("bootstrapping request for %s.%s", databaseName, tableName));
+		String whereClause = bootstrapWhere(startBootstrapRow);
+
+		String logString = String.format("bootstrapping request for %s.%s", databaseName, tableName);
+		if ( whereClause != null ) {
+			logString += String.format(" with where clause %s", whereClause);
+		}
+		LOGGER.debug(logString);
 
 		Schema schema = replicator.getSchema();
 		Database database = findDatabase(schema, databaseName);
 		Table table = findTable(tableName, database);
 
-		BinlogPosition position = startBootstrapRow.getPosition();
+		Position position = startBootstrapRow.getPosition();
 		producer.push(startBootstrapRow);
 		producer.push(bootstrapStartRowMap(table, position));
 		LOGGER.info(String.format("bootstrapping started for %s.%s, binlog position is %s", databaseName, tableName, position.toString()));
 		try ( Connection connection = getConnection();
 			  Connection streamingConnection = getStreamingConnection()) {
 			setBootstrapRowToStarted(startBootstrapRow, connection);
-			ResultSet resultSet = getAllRows(databaseName, tableName, schema, streamingConnection);
+			ResultSet resultSet = getAllRows(databaseName, tableName, schema, whereClause, streamingConnection);
 			int insertedRows = 0;
-	                lastInsertedRowsUpdateTimeMillis = 0; // ensure updateInsertedRowsColumn is called at least once
+			lastInsertedRowsUpdateTimeMillis = 0; // ensure updateInsertedRowsColumn is called at least once
 			while ( resultSet.next() ) {
 				RowMap row = bootstrapEventRowMap("bootstrap-insert", table, position);
 				setRowValues(row, resultSet, table);
@@ -62,7 +69,7 @@ public class SynchronousBootstrapper extends AbstractBootstrapper {
 
 				producer.push(row);
 				++insertedRows;
-				updateInsertedRowsColumn(insertedRows, startBootstrapRow, position, connection);
+				updateInsertedRowsColumn(insertedRows, startBootstrapRow, position.getBinlogPosition(), connection);
 			}
 			setBootstrapRowToCompleted(insertedRows, startBootstrapRow, connection);
 		}
@@ -97,20 +104,20 @@ public class SynchronousBootstrapper extends AbstractBootstrapper {
 		return conn;
 	}
 
-	private RowMap bootstrapStartRowMap(Table table, BinlogPosition position) {
+	private RowMap bootstrapStartRowMap(Table table, Position position) {
 		return bootstrapEventRowMap("bootstrap-start", table, position);
 	}
 
-	private RowMap bootstrapCompleteRowMap(Table table, BinlogPosition position) {
+	private RowMap bootstrapCompleteRowMap(Table table, Position position) {
 		return bootstrapEventRowMap("bootstrap-complete", table, position);
 	}
 
-	private RowMap bootstrapEventRowMap(String type, Table table, BinlogPosition position) {
+	private RowMap bootstrapEventRowMap(String type, Table table, Position position) {
 		return new RowMap(
 				type,
 				table.getDatabase(),
 				table.getName(),
-				System.currentTimeMillis() / 1000,
+				System.currentTimeMillis(),
 				table.getPKList(),
 				position);
 	}
@@ -124,7 +131,7 @@ public class SynchronousBootstrapper extends AbstractBootstrapper {
 		ensureTable(tableName, database);
 		Table table = findTable(tableName, database);
 
-		BinlogPosition position = completeBootstrapRow.getPosition();
+		Position position = completeBootstrapRow.getPosition();
 		producer.push(completeBootstrapRow);
 		producer.push(bootstrapCompleteRowMap(table, position));
 
@@ -178,14 +185,22 @@ public class SynchronousBootstrapper extends AbstractBootstrapper {
 		findTable(tableName, database);
 	}
 
-	private ResultSet getAllRows(String databaseName, String tableName, Schema schema, Connection connection) throws SQLException, InterruptedException {
+	private ResultSet getAllRows(String databaseName, String tableName, Schema schema, String whereClause,
+								Connection connection) throws SQLException, InterruptedException {
 		Statement statement = createBatchStatement(connection);
 		String pk = schema.findDatabase(databaseName).findTable(tableName).getPKString();
-		if ( pk != null && !pk.equals("") ) {
-			return statement.executeQuery(String.format("select * from `%s`.%s order by %s", databaseName, tableName, pk));
-		} else {
-			return statement.executeQuery(String.format("select * from `%s`.%s", databaseName, tableName));
+
+		String sql = String.format("select * from `%s`.%s", databaseName, tableName);
+
+		if ( whereClause != null && !whereClause.equals("") ) {
+			sql += String.format(" where %s", whereClause);
 		}
+
+		if ( pk != null && !pk.equals("") ) {
+			sql += String.format(" order by %s", pk);
+		}
+
+		return statement.executeQuery(sql);
 	}
 
 	private Statement createBatchStatement(Connection connection) throws SQLException, InterruptedException {

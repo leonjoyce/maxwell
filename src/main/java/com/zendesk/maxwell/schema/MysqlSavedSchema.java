@@ -4,15 +4,19 @@ import java.sql.*;
 import java.util.*;
 
 import java.io.IOException;
+
+import com.github.shyiko.mysql.binlog.GtidSet;
 import com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.zendesk.maxwell.CaseSensitivity;
 import com.zendesk.maxwell.MaxwellContext;
+import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.schema.columndef.*;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.text.StrTokenizer;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,11 +29,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import snaq.db.ConnectionPool;
 
+
 public class MysqlSavedSchema {
-	static int SchemaStoreVersion = 3;
+	static int SchemaStoreVersion = 4;
 
 	private Schema schema;
-	private BinlogPosition position;
+	private Position position;
 	private Long schemaID;
 	private int schemaVersion;
 
@@ -54,28 +59,25 @@ public class MysqlSavedSchema {
 		this.sensitivity = sensitivity;
 	}
 
-	public MysqlSavedSchema(Long serverID, CaseSensitivity sensitivity, Schema schema, BinlogPosition position) throws SQLException {
+	public MysqlSavedSchema(Long serverID, CaseSensitivity sensitivity, Schema schema, Position position) throws SQLException {
 		this(serverID, sensitivity);
 		this.schema = schema;
-		this.position = position;
+		setPosition(position);
 	}
 
-	public MysqlSavedSchema(MaxwellContext context, Schema schema, BinlogPosition position) throws SQLException {
+	public MysqlSavedSchema(MaxwellContext context, Schema schema, Position position) throws SQLException {
 		this(context.getServerID(), context.getCaseSensitivity(), schema, position);
 	}
 
-	public MysqlSavedSchema(Long serverID, CaseSensitivity sensitivity, Schema schema, BinlogPosition position,
+	public MysqlSavedSchema(Long serverID, CaseSensitivity sensitivity, Schema schema, Position position,
 							long baseSchemaID, List<ResolvedSchemaChange> deltas) throws SQLException {
-		this(serverID, sensitivity);
+		this(serverID, sensitivity, schema, position);
 
-		this.schema = schema;
 		this.baseSchemaID = baseSchemaID;
 		this.deltas = deltas;
-
-		this.position = position;
 	}
 
-	public MysqlSavedSchema createDerivedSchema(Schema newSchema, BinlogPosition position, List<ResolvedSchemaChange> deltas) throws SQLException {
+	public MysqlSavedSchema createDerivedSchema(Schema newSchema, Position position, List<ResolvedSchemaChange> deltas) throws SQLException {
 		if ( this.shouldSnapshotNextSchema )
 			return new MysqlSavedSchema(this.serverID, this.sensitivity, newSchema, position);
 		else
@@ -101,7 +103,7 @@ public class MysqlSavedSchema {
 			return null;
 	}
 
-	public void save(Connection connection) throws SQLException {
+	public Long save(Connection connection) throws SQLException {
 		if (this.schema == null)
 			throw new RuntimeException("Uninitialized schema!");
 
@@ -109,7 +111,7 @@ public class MysqlSavedSchema {
 		this.schemaID = findSchemaForPositionSHA(connection, getPositionSHA());
 
 		if ( this.schemaID != null )
-			return;
+			return schemaID;
 
 		try {
 			connection.setAutoCommit(false);
@@ -123,6 +125,7 @@ public class MysqlSavedSchema {
 		} finally {
 			connection.setAutoCommit(true);
 		}
+		return schemaID;
 	}
 
 	/* Look for SHAs already created at a position we're about to save to.
@@ -141,11 +144,11 @@ public class MysqlSavedSchema {
 		}
 	}
 
-	public Long saveDerivedSchema(Connection conn) throws SQLException {
+	private Long saveDerivedSchema(Connection conn) throws SQLException {
 		PreparedStatement insert = conn.prepareStatement(
 				"INSERT into `schemas` SET base_schema_id = ?, deltas = ?, binlog_file = ?, " +
 				"binlog_position = ?, server_id = ?, charset = ?, version = ?, " +
-				"position_sha = ?",
+				"position_sha = ?, gtid_set = ?, last_heartbeat_read = ?",
 				Statement.RETURN_GENERATED_KEYS);
 
 		String deltaString;
@@ -155,17 +158,20 @@ public class MysqlSavedSchema {
 		} catch ( JsonProcessingException e ) {
 			throw new RuntimeException("Couldn't serialize " + deltas + " to JSON.");
 		}
+		BinlogPosition binlogPosition = position.getBinlogPosition();
 
 		return executeInsert(
 			insert,
 			this.baseSchemaID,
 			deltaString,
-			position.getFile(),
-			position.getOffset(),
+			binlogPosition.getFile(),
+			binlogPosition.getOffset(),
 			serverID,
 			schema.getCharset(),
 			SchemaStoreVersion,
-			getPositionSHA()
+			getPositionSHA(),
+			binlogPosition.getGtidSetStr(),
+			position.getLastHeartbeatRead()
 		);
 
 	}
@@ -177,7 +183,7 @@ public class MysqlSavedSchema {
 		PreparedStatement schemaInsert, databaseInsert, tableInsert;
 
 		schemaInsert = conn.prepareStatement(
-				"INSERT INTO `schemas` SET binlog_file = ?, binlog_position = ?, server_id = ?, charset = ?, version = ?, position_sha = ?",
+				"INSERT INTO `schemas` SET binlog_file = ?, binlog_position = ?, server_id = ?, charset = ?, version = ?, position_sha = ?, gtid_set = ?, last_heartbeat_read = ?",
 				Statement.RETURN_GENERATED_KEYS
 		);
 
@@ -191,8 +197,10 @@ public class MysqlSavedSchema {
 				Statement.RETURN_GENERATED_KEYS
 		);
 
-		Long schemaId = executeInsert(schemaInsert, position.getFile(),
-				position.getOffset(), serverID, schema.getCharset(), SchemaStoreVersion, getPositionSHA());
+		BinlogPosition binlogPosition = position.getBinlogPosition();
+		Long schemaId = executeInsert(schemaInsert, binlogPosition.getFile(),
+				binlogPosition.getOffset(), serverID, schema.getCharset(), SchemaStoreVersion,
+				getPositionSHA(), binlogPosition.getGtidSetStr(), position.getLastHeartbeatRead());
 
 		ArrayList<Object> columnData = new ArrayList<Object>();
 
@@ -208,7 +216,13 @@ public class MysqlSavedSchema {
 
 					if ( c instanceof EnumeratedColumnDef ) {
 						EnumeratedColumnDef enumColumn = (EnumeratedColumnDef) c;
-						enumValuesSQL = StringUtils.join(enumColumn.getEnumValues(), ",");
+						if (enumColumn.getEnumValues() != null) {
+							try {
+								enumValuesSQL = mapper.writeValueAsString(enumColumn.getEnumValues());
+							} catch (JsonProcessingException e) {
+								throw new SQLException(e);
+							}
+						}
 					}
 
 					columnData.add(schemaId);
@@ -270,15 +284,15 @@ public class MysqlSavedSchema {
 		columnData.clear();
 	}
 
-	public static MysqlSavedSchema restore(MaxwellContext context, BinlogPosition targetPosition) throws SQLException, InvalidSchemaError {
-		return restore(context.getMaxwellConnectionPool(), context.getServerID(), context.getCaseSensitivity(), context.getInitialPosition());
+	public static MysqlSavedSchema restore(MaxwellContext context, Position targetPosition) throws SQLException, InvalidSchemaError {
+		return restore(context.getMaxwellConnectionPool(), context.getServerID(), context.getCaseSensitivity(), targetPosition);
 	}
 
 	public static MysqlSavedSchema restore(
 		ConnectionPool pool,
 		Long serverID,
 		CaseSensitivity caseSensitivity,
-		BinlogPosition targetPosition
+		Position targetPosition
 	) throws SQLException, InvalidSchemaError {
 		try ( Connection conn = pool.getConnection() ) {
 			Long schemaID = findSchema(conn, targetPosition, serverID);
@@ -383,10 +397,13 @@ public class MysqlSavedSchema {
 	protected void restoreFromSchemaID(Connection conn, Long schemaID) throws SQLException, InvalidSchemaError {
 		restoreSchemaMetadata(conn, schemaID);
 
-		if ( this.baseSchemaID != null )
+		if (this.baseSchemaID != null) {
+			LOGGER.debug("Restoring derived schema");
 			restoreDerivedSchema(conn, schemaID);
-		else
+		} else {
+			LOGGER.debug("Restoring full schema");
 			restoreFullSchema(conn, schemaID);
+		}
 	}
 
 	private void restoreSchemaMetadata(Connection conn, Long schemaID) throws SQLException {
@@ -395,7 +412,14 @@ public class MysqlSavedSchema {
 
 		schemaRS.next();
 
-		this.position = new BinlogPosition(schemaRS.getInt("binlog_position"), schemaRS.getString("binlog_file"));
+		setPosition(new Position(
+			new BinlogPosition(
+				schemaRS.getString("gtid_set"),
+				null,
+				schemaRS.getInt("binlog_position"),
+				schemaRS.getString("binlog_file")
+			), schemaRS.getLong("last_heartbeat_read")
+		));
 
 		LOGGER.info("Restoring schema id " + schemaRS.getInt("id") + " (last modified at " + this.position + ")");
 
@@ -410,90 +434,160 @@ public class MysqlSavedSchema {
 		this.schema = new Schema(new ArrayList<Database>(), schemaRS.getString("charset"), this.sensitivity);
 	}
 
+
 	private void restoreFullSchema(Connection conn, Long schemaID) throws SQLException, InvalidSchemaError {
-		PreparedStatement p = conn.prepareStatement("SELECT * from `databases` where schema_id = ? ORDER by id");
+		PreparedStatement p = conn.prepareStatement(
+				"SELECT " +
+						"d.id AS dbId," +
+						"d.name AS dbName," +
+						"d.charset AS dbCharset," +
+						"t.name AS tableName," +
+						"t.charset AS tableCharset," +
+						"t.pk AS tablePk," +
+						"t.id AS tableId," +
+						"c.column_length AS columnLength," +
+						"c.enum_values AS columnEnumValues," +
+						"c.name AS columnName," +
+						"c.charset AS columnCharset," +
+						"c.coltype AS columnColtype," +
+						"c.is_signed AS columnIsSigned " +
+						"FROM `databases` d " +
+						"LEFT JOIN tables t ON d.id = t.database_id " +
+						"LEFT JOIN columns c ON c.table_id=t.id " +
+						"WHERE d.schema_id = ? " +
+						"ORDER BY d.id, t.id, c.id"
+		);
+
 		p.setLong(1, this.schemaID);
+		ResultSet rs = p.executeQuery();
 
-		ResultSet dbRS = p.executeQuery();
+		Database currentDatabase = null;
+		Table currentTable = null;
+		int columnIndex = 0;
 
-		while (dbRS.next()) {
-			this.schema.addDatabase(restoreDatabase(conn, dbRS.getInt("id"), dbRS.getString("name"), dbRS.getString("charset")));
-		}
+		while (rs.next()) {
+			// Database
+			String dbName = rs.getString("dbName");
+			String dbCharset = rs.getString("dbCharset");
 
-	}
+			// Table
+			String tName = rs.getString("tableName");
+			String tCharset = rs.getString("tableCharset");
+			String tPKs = rs.getString("tablePk");
 
-	private Database restoreDatabase(Connection conn, int id, String name, String charset) throws SQLException {
-		Statement s = conn.createStatement();
-		Database d = new Database(name, charset);
+			// Column
+			String columnName = rs.getString("columnName");
+			int columnLengthInt = rs.getInt("columnLength");
+			String columnEnumValues = rs.getString("columnEnumValues");
+			String columnCharset = rs.getString("columnCharset");
+			String columnType = rs.getString("columnColtype");
+			int columnIsSigned = rs.getInt("columnIsSigned");
 
-		ResultSet tRS = s.executeQuery("SELECT * from `tables` where database_id = " + id + " ORDER by id");
+			if (currentDatabase == null || !currentDatabase.getName().equals(dbName)) {
+				currentDatabase = new Database(dbName, dbCharset);
+				this.schema.addDatabase(currentDatabase);
+				LOGGER.debug("Restoring database " + dbName + "...");
+			}
 
-		while (tRS.next()) {
-			String tName = tRS.getString("name");
-			String tCharset = tRS.getString("charset");
-			String tPKs = tRS.getString("pk");
+			if (tName == null) {
+				// if tName is null, there are no tables connected to this database
+				continue;
+			} else if (currentTable == null || !currentTable.getName().equals(tName)) {
+				currentTable = currentDatabase.buildTable(tName, tCharset);
+				if (tPKs != null) {
+					List<String> pkList = Arrays.asList(StringUtils.split(tPKs, ','));
+					currentTable.setPKList(pkList);
+				}
+				columnIndex = 0;
+			}
 
-			int tID = tRS.getInt("id");
 
-			restoreTable(conn, d, tName, tID, tCharset, tPKs);
-		}
-		return d;
-	}
+			if (columnName == null) {
+				// If columnName is null, there are no columns connected to this table
+				continue;
+			}
 
-	private void restoreTable(Connection connection, Database d, String name, int id, String charset, String pks) throws SQLException {
-		Statement s = connection.createStatement();
-
-		Table t = d.buildTable(name, charset);
-
-		ResultSet cRS = s.executeQuery("SELECT * from `columns` where table_id = " + id + " ORDER by id");
-
-		int i = 0;
-		while (cRS.next()) {
 			Long columnLength;
-			int columnLengthInt = cRS.getInt("column_length");
-			if ( cRS.wasNull() )
+			if (rs.wasNull()) {
 				columnLength = null;
-			else
+			} else {
 				columnLength = Long.valueOf(columnLengthInt);
+			}
 
 			String[] enumValues = null;
-			if ( cRS.getString("enum_values") != null )
-				enumValues = StringUtils.splitByWholeSeparatorPreserveAllTokens(cRS.getString("enum_values"), ",");
+			if (columnEnumValues != null) {
+				if (this.schemaVersion >= 4) {
+					try {
+						enumValues = mapper.readValue(columnEnumValues, String[].class);
+					} catch (IOException e) {
+						throw new SQLException(e);
+					}
+				} else {
+					enumValues = StringUtils.splitByWholeSeparatorPreserveAllTokens(columnEnumValues, ",");
+				}
+			}
 
 			ColumnDef c = ColumnDef.build(
-					cRS.getString("name"), cRS.getString("charset"),
-					cRS.getString("coltype"), i++,
-					cRS.getInt("is_signed") == 1,
+					columnName,
+					columnCharset,
+					columnType,
+					columnIndex++,
+					columnIsSigned == 1,
 					enumValues,
-					columnLength);
-			t.addColumn(c);
-		}
+					columnLength
+			);
+			currentTable.addColumn(c);
 
-		if ( pks != null ) {
-			List<String> pkList = Arrays.asList(StringUtils.split(pks, ','));
-			t.setPKList(pkList);
 		}
+		rs.close();
+		LOGGER.debug("Restored all databases");
 	}
 
-	private static Long findSchema(Connection connection, BinlogPosition targetPosition, Long serverID)
+	private static Long findSchema(Connection connection, Position targetPosition, Long serverID)
 			throws SQLException {
 		LOGGER.debug("looking to restore schema at target position " + targetPosition);
-		PreparedStatement s = connection.prepareStatement(
-			"SELECT id from `schemas` "
-			+ "WHERE deleted = 0 "
-			+ "AND ((binlog_file < ?) OR (binlog_file = ? and binlog_position <= ?)) AND server_id = ? "
-			+ "ORDER BY id desc limit 1");
+		BinlogPosition targetBinlogPosition = targetPosition.getBinlogPosition();
+		if (targetBinlogPosition.getGtidSetStr() != null) {
+			PreparedStatement s = connection.prepareStatement(
+				"SELECT id, gtid_set from `schemas` "
+				+ "WHERE deleted = 0 "
+				+ "ORDER BY id desc");
 
-		s.setString(1, targetPosition.getFile());
-		s.setString(2, targetPosition.getFile());
-		s.setLong(3, targetPosition.getOffset());
-		s.setLong(4, serverID);
-
-		ResultSet rs = s.executeQuery();
-		if (rs.next()) {
-			return rs.getLong("id");
-		} else
+			ResultSet rs = s.executeQuery();
+			while (rs.next()) {
+				Long id = rs.getLong("id");
+				String gtid = rs.getString("gtid_set");
+				LOGGER.debug("Retrieving schema at id: " + id + " gtid: " + gtid);
+				if (gtid != null) {
+					GtidSet gtidSet = new GtidSet(gtid);
+					if (gtidSet.isContainedWithin(targetBinlogPosition.getGtidSet())) {
+						LOGGER.debug("Found contained schema: " + id);
+						return id;
+					}
+				}
+			}
 			return null;
+		} else {
+			// Only consider binlog positions before the target position on the current server.
+			// Within those, sort for the latest binlog file, then the latest binlog position.
+			PreparedStatement s = connection.prepareStatement(
+				"SELECT id from `schemas` "
+				+ "WHERE deleted = 0 "
+				+ "AND last_heartbeat_read <= ? AND ((binlog_file < ?) OR (binlog_file = ? and binlog_position <= ?)) AND server_id = ? "
+				+ "ORDER BY last_heartbeat_read DESC, binlog_file DESC, binlog_position DESC limit 1");
+
+			s.setLong(1, targetPosition.getLastHeartbeatRead());
+			s.setString(2, targetBinlogPosition.getFile());
+			s.setString(3, targetBinlogPosition.getFile());
+			s.setLong(4, targetBinlogPosition.getOffset());
+			s.setLong(5, serverID);
+
+			ResultSet rs = s.executeQuery();
+			if (rs.next()) {
+				return rs.getLong("id");
+			} else
+				return null;
+		}
 	}
 
 	public Schema getSchema() {
@@ -508,6 +602,10 @@ public class MysqlSavedSchema {
 		if ( this.schemaID == null ) {
 			throw new RuntimeException("Can't destroy uninitialized schema!");
 		}
+	}
+
+	private void setPosition(Position position) {
+		this.position = position;
 	}
 
 	public static void delete(Connection connection, long schema_id) throws SQLException {
@@ -532,6 +630,13 @@ public class MysqlSavedSchema {
 	}
 
 	public BinlogPosition getBinlogPosition() {
+		if (this.position == null) {
+			return null;
+		}
+		return this.position.getBinlogPosition();
+	}
+
+	public Position getPosition() {
 		return this.position;
 	}
 
@@ -651,11 +756,17 @@ public class MysqlSavedSchema {
 	}
 
 	private String getPositionSHA() {
-		return getSchemaPositionSHA(serverID, position.getFile(), position.getOffset());
+		return getSchemaPositionSHA(serverID, position);
 	}
 
-	public static String getSchemaPositionSHA(Long serverID, String binlogFilename, Long binlogPosition) {
-		String shaString = String.format("%d/%s/%d", serverID, binlogFilename, binlogPosition);
+	public static String getSchemaPositionSHA(Long serverID, Position position) {
+		BinlogPosition binlogPosition = position.getBinlogPosition();
+		String shaString = String.format("%d/%s/%d/%d",
+			serverID,
+			binlogPosition.getFile(),
+			binlogPosition.getOffset(),
+			position.getLastHeartbeatRead()
+		);
 		return DigestUtils.shaHex(shaString);
 	}
 }

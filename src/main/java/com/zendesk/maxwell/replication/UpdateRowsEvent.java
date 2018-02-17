@@ -1,9 +1,5 @@
 package com.zendesk.maxwell.replication;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.*;
-
 import com.google.code.or.binlog.impl.event.UpdateRowsEventV2;
 import com.google.code.or.common.glossary.Pair;
 import com.google.code.or.common.glossary.Row;
@@ -14,16 +10,20 @@ import com.zendesk.maxwell.schema.ColumnWithDefinition;
 import com.zendesk.maxwell.schema.ColumnWithDefinitionList;
 import com.zendesk.maxwell.schema.Table;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 public class UpdateRowsEvent extends AbstractRowsEvent {
 	private final com.google.code.or.binlog.impl.event.UpdateRowsEvent event;
 
-	public UpdateRowsEvent(com.google.code.or.binlog.impl.event.UpdateRowsEvent e, Table t, MaxwellFilter f, Long heartbeat) {
-		super(e, t, f, heartbeat);
+	public UpdateRowsEvent(com.google.code.or.binlog.impl.event.UpdateRowsEvent e, Table t, MaxwellFilter f, long lastHeartbeat) {
+		super(e, t, f, lastHeartbeat);
 		this.event = e;
 	}
 
-	public UpdateRowsEvent(UpdateRowsEventV2 e2, Table table, MaxwellFilter filter, Long heartbeat) {
-		super(e2, table, filter, heartbeat);
+	public UpdateRowsEvent(UpdateRowsEventV2 e2, Table table, MaxwellFilter filter, long lastHeartbeat) {
+		super(e2, table, filter, lastHeartbeat);
 		com.google.code.or.binlog.impl.event.UpdateRowsEvent e =  new com.google.code.or.binlog.impl.event.UpdateRowsEvent(e2.getHeader());
 
 		e.setBinlogFilename(e2.getBinlogFilename());

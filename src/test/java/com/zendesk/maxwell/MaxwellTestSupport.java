@@ -1,7 +1,8 @@
 package com.zendesk.maxwell;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zendesk.maxwell.replication.BinlogPosition;
+import com.zendesk.maxwell.producer.MaxwellOutputConfig;
+import com.zendesk.maxwell.replication.Position;
 import com.zendesk.maxwell.row.RowMap;
 import com.zendesk.maxwell.schema.Schema;
 import com.zendesk.maxwell.schema.SchemaCapturer;
@@ -12,6 +13,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,7 +32,9 @@ public class MaxwellTestSupport {
 		MysqlIsolatedServer server = new MysqlIsolatedServer();
 		server.boot(extraParams);
 
-		SchemaStoreSchema.ensureMaxwellSchema(server.getConnection(), "maxwell");
+		Connection conn = server.getConnection();
+		SchemaStoreSchema.ensureMaxwellSchema(conn, "maxwell");
+		SchemaStoreSchema.upgradeSchemaStoreSchema(conn);
 		return server;
 	}
 
@@ -61,10 +65,10 @@ public class MaxwellTestSupport {
 		}
 
 		String shardedFileName;
-		if ( server.getVersion().equals("5.6") )
-			shardedFileName = "sharded_56.sql";
-		else
+		if ( server.getVersion().atLeast(server.VERSION_5_6) )
 			shardedFileName = "sharded.sql";
+		else
+			shardedFileName = "sharded_55.sql";
 
 		File shardedFile = new File(getSQLDir() + "/schema/" + shardedFileName);
 		byte[] sql = Files.readAllBytes(shardedFile.toPath());
@@ -89,7 +93,7 @@ public class MaxwellTestSupport {
 	}
 
 
-	public static MaxwellContext buildContext(int port, BinlogPosition p, MaxwellFilter filter) throws SQLException {
+	public static MaxwellContext buildContext(int port, Position p, MaxwellFilter filter) throws SQLException {
 		MaxwellConfig config = new MaxwellConfig();
 
 		config.replicationMysql.host = "127.0.0.1";
@@ -116,7 +120,7 @@ public class MaxwellTestSupport {
 		mysql.execute("drop database if exists maxwell");
 	}
 
-	public static List<RowMap>getRowsWithReplicator(final MysqlIsolatedServer mysql, MaxwellFilter filter, final String queries[], final String before[]) throws Exception {
+	public static List<RowMap> getRowsWithReplicator(final MysqlIsolatedServer mysql, MaxwellFilter filter, final String queries[], final String before[]) throws Exception {
 		MaxwellTestSupportCallback callback = new MaxwellTestSupportCallback() {
 			@Override
 			public void afterReplicatorStart(MysqlIsolatedServer mysql) throws SQLException {
@@ -130,10 +134,18 @@ public class MaxwellTestSupport {
 			}
 		};
 
-		return getRowsWithReplicator(mysql, filter, callback);
+		return getRowsWithReplicator(mysql, filter, callback, null);
 	}
 
-	public static List<RowMap>getRowsWithReplicator(final MysqlIsolatedServer mysql, MaxwellFilter filter, MaxwellTestSupportCallback callback) throws Exception {
+	public static boolean inGtidMode() {
+		return System.getenv(MaxwellConfig.GTID_MODE_ENV) != null;
+	}
+
+	public static Position capture(Connection c) throws SQLException {
+		return Position.capture(c, inGtidMode());
+	}
+
+	public static List<RowMap> getRowsWithReplicator(final MysqlIsolatedServer mysql, MaxwellFilter filter, MaxwellTestSupportCallback callback, MaxwellOutputConfig outputConfig) throws Exception {
 		final ArrayList<RowMap> list = new ArrayList<>();
 
 		clearSchemaStore(mysql);
@@ -146,6 +158,9 @@ public class MaxwellTestSupport {
 		config.maxwellMysql.port = mysql.getPort();
 		config.maxwellMysql.jdbcOptions.add("useSSL=false");
 		config.replicationMysql = config.maxwellMysql;
+		if (outputConfig == null) {
+			outputConfig = new MaxwellOutputConfig();
+		}
 
 		if ( filter != null ) {
 			if ( filter.isDatabaseWhitelist() )
@@ -159,13 +174,24 @@ public class MaxwellTestSupport {
 
 		callback.beforeReplicatorStart(mysql);
 
-		config.initPosition = BinlogPosition.capture(mysql.getConnection());
+		config.initPosition = capture(mysql.getConnection());
 		final String waitObject = new String("");
-		BufferedMaxwell maxwell = new BufferedMaxwell(config) {
+		final BufferedMaxwell maxwell = new BufferedMaxwell(config) {
 			@Override
 			protected void onReplicatorStart() {
 				synchronized(waitObject) {
 					waitObject.notify();
+				}
+			}
+
+			@Override
+			public void run() {
+				try {
+					super.run();
+				} finally {
+					synchronized(waitObject) {
+						waitObject.notify();
+					}
 				}
 			}
 		};
@@ -174,14 +200,18 @@ public class MaxwellTestSupport {
 
 		synchronized(waitObject) { waitObject.wait(); }
 
+		Exception maxwellError = maxwell.context.getError();
+		if (maxwellError != null) {
+			throw maxwell.context.getError();
+		}
+
 		callback.afterReplicatorStart(mysql);
-		maxwell.context.getPositionStore().heartbeat();
+		long finalHeartbeat = maxwell.context.getPositionStore().heartbeat();
 
-		BinlogPosition finalPosition = BinlogPosition.capture(mysql.getConnection());
-		LOGGER.debug("running replicator up to " + finalPosition);
+		LOGGER.debug("running replicator up to heartbeat: " + finalHeartbeat);
 
-		Long pollTime = 1000L;
-		BinlogPosition lastPositionRead = null;
+		Long pollTime = 2000L;
+		Position lastPositionRead = null;
 
 		for ( ;; ) {
 			RowMap row = maxwell.poll(pollTime);
@@ -194,25 +224,30 @@ public class MaxwellTestSupport {
 
 			lastPositionRead = row.getPosition();
 
-			if ( row.getPosition().newerThan(finalPosition) ) {
+			if ( lastPositionRead.getLastHeartbeatRead() >= finalHeartbeat ) {
 				// consume whatever's left over in the buffer.
 				for ( ;; ) {
 					RowMap r = maxwell.poll(100);
 					if ( r == null )
 						break;
 
-					if ( r.toJSON() != null )
+					if ( r.toJSON(outputConfig) != null )
 						list.add(r);
 				}
 
 				break;
 			}
-			if ( row.toJSON() != null )
+			if ( row.toJSON(outputConfig) != null )
 				list.add(row);
 		}
 
 		callback.beforeTerminate(mysql);
 		maxwell.terminate();
+
+		maxwellError = maxwell.context.getError();
+		if (maxwellError != null) {
+			throw maxwellError;
+		}
 
 		return list;
 	}
